@@ -115,7 +115,7 @@ class MaresEncoderTest {
         assertEquals(0, profile[0].toInt() and 0xFF) // type low
         assertEquals(0, profile[1].toInt() and 0xFF) // type high
         assertEquals(0, profile[2].toInt() and 0xFF) // minor version
-        assertEquals(1, profile[3].toInt() and 0xFF) // major version
+        assertEquals(2, profile[3].toInt() and 0xFF) // major version
 
         // Check DSTR tag at offset 4
         val dstr = String(profile.sliceArray(4..7))

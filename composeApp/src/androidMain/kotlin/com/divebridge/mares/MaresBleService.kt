@@ -57,8 +57,11 @@ class MaresBleService(
         IDLE, ADVERTISING, CLIENT_CONNECTED, DEVICE_READY, TRANSFERRING_HEADER, TRANSFERRING_PROFILE, COMPLETE, ERROR
     }
 
-    fun start(dive: Dive, model: MaresModel = DEFAULT_MODEL) {
-        protocol = MaresProtocol(dive, model)
+    fun start(dive: Dive, model: MaresModel? = null) {
+        // Auto-select: Genius (with AIRS) when tank data exists, Puck 4 otherwise
+        val effectiveModel = model ?: if (dive.tank != null) MaresModel.GENIUS else MaresModel.PUCK_4
+        protocol = MaresProtocol(dive, effectiveModel)
+        log("Emulating ${effectiveModel.displayName}" + if (dive.tank != null) " (with air integration)" else "")
         pendingCmd = null
 
         val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager

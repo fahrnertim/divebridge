@@ -23,7 +23,7 @@ object MaresEncoder {
 
     // Profile constants
     private const val PROFILE_TYPE: Short = 0 // normal (not SCR)
-    private const val PROFILE_VERSION_MAJOR: Byte = 1
+    private const val PROFILE_VERSION_MAJOR: Byte = 2
     private const val PROFILE_VERSION_MINOR: Byte = 0
 
     // Record tags (4 bytes, big-endian ASCII)
@@ -148,10 +148,12 @@ object MaresEncoder {
         val totalSamples = samples.size.coerceAtLeast(1)
 
         // DPRS records (depth/pressure samples every 5 seconds)
-        // with AIRS records interleaved when air integration is enabled
+        // AIRS records interleaved every 4th DPRS when air integration is enabled
+        var dprsCount = 0
         for ((i, sample) in samples.withIndex()) {
             out.addAll(encodeRecord(TAG_DPRS, encodeDprs(sample)))
-            if (hasTankData) {
+            dprsCount++
+            if (hasTankData && dprsCount % 4 == 0) {
                 val frac = i.toDouble() / totalSamples
                 val pressure = startBar + (endBar - startBar) * frac
                 out.addAll(encodeRecord(TAG_AIRS, encodeAirs(pressure)))

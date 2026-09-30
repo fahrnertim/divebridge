@@ -13,9 +13,7 @@ class MaresProtocol(
 ) {
     private val diveHeader: ByteArray by lazy { MaresEncoder.encodeHeader(dive, model) }
     private val diveProfile: ByteArray by lazy {
-        // Note: AIRS records in profile cause SSI Genius parser issues.
-        // Tank data is in the header only for now.
-        MaresEncoder.encodeProfile(dive, hasTankData = false)
+        MaresEncoder.encodeProfile(dive, hasTankData = model.hasAirIntegration && dive.tank != null)
     }
 
     companion object {

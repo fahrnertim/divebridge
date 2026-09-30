@@ -4,11 +4,7 @@ package com.divebridge.mares
  * Mares dive computer models we can emulate.
  * All use the Genius-family Icon HD protocol.
  */
-/**
- * Default model. Genius has air integration but its SSI parser expects
- * a different profile format we haven't fully reverse-engineered yet.
- * Puck 4 works reliably for profile import.
- */
+/** Default model. Auto-selected based on tank data availability. */
 val DEFAULT_MODEL = MaresModel.PUCK_4
 
 enum class MaresModel(
