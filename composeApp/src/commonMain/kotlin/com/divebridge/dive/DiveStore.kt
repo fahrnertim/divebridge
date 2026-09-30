@@ -10,6 +10,7 @@ interface DiveStore {
     fun get(id: String): StoredDive?
     fun add(dive: Dive, source: String): StoredDive
     fun remove(id: String)
+    fun setBleHidden(id: String, hidden: Boolean)
     fun clear()
 }
 
@@ -21,4 +22,5 @@ data class StoredDive(
     val dive: Dive,
     val source: String,
     val addedAtMillis: Long,
+    val bleHidden: Boolean = false,
 )

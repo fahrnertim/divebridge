@@ -55,6 +55,18 @@ class AndroidDiveStore(context: Context) : DiveStore {
         saveIndex(list)
     }
 
+    override fun setBleHidden(id: String, hidden: Boolean) {
+        val list = getAll().toMutableList()
+        val idx = list.indexOfFirst { it.id == id }
+        if (idx >= 0) {
+            val updated = list[idx].copy(bleHidden = hidden)
+            list[idx] = updated
+            cache = list
+            saveDiveFile(updated)
+            saveIndex(list)
+        }
+    }
+
     override fun clear() {
         dir.listFiles()?.forEach { it.delete() }
         cache = mutableListOf()
@@ -87,10 +99,11 @@ class AndroidDiveStore(context: Context) : DiveStore {
         val file = File(dir, "${stored.id}.dive")
         DataOutputStream(file.outputStream().buffered()).use { out ->
             val dive = stored.dive
-            out.writeInt(1) // version
+            out.writeInt(2) // version
             out.writeUTF(stored.id)
             out.writeUTF(stored.source)
             out.writeLong(stored.addedAtMillis)
+            out.writeBoolean(stored.bleHidden)
 
             // Dive fields
             out.writeUTF(dive.dateTime.toString())
@@ -125,10 +138,11 @@ class AndroidDiveStore(context: Context) : DiveStore {
         return try {
             DataInputStream(file.inputStream().buffered()).use { inp ->
                 val version = inp.readInt()
-                if (version != 1) return null
+                if (version !in 1..2) return null
                 val storedId = inp.readUTF()
                 val source = inp.readUTF()
                 val addedAt = inp.readLong()
+                val bleHidden = if (version >= 2) inp.readBoolean() else false
 
                 val dateTime = LocalDateTime.parse(inp.readUTF())
                 val maxDepth = inp.readDouble()
@@ -161,6 +175,7 @@ class AndroidDiveStore(context: Context) : DiveStore {
                     ),
                     source = source,
                     addedAtMillis = addedAt,
+                    bleHidden = bleHidden,
                 )
             }
         } catch (e: Exception) {

@@ -13,4 +13,6 @@ interface Settings {
     fun addRecentSiteId(siteId: String)
     fun getDiveHistory(): List<DiveHistoryEntry>
     fun addDiveHistoryEntry(entry: DiveHistoryEntry)
+    fun getBleCutoffDate(): String? // ISO date string "yyyy-MM-dd", null = no cutoff
+    fun setBleCutoffDate(date: String?)
 }

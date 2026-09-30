@@ -16,6 +16,7 @@ import kotlin.math.roundToInt
 @Composable
 fun HomeScreenNew(
     dives: List<StoredDive>,
+    bleCutoffDate: String?,
     onOpenFile: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenBle: (() -> Unit)?,
@@ -72,7 +73,9 @@ fun HomeScreenNew(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 items(dives) { stored ->
-                    DiveCard(stored = stored, onClick = { onDiveTap(stored) })
+                    val hiddenByCutoff = bleCutoffDate != null &&
+                            stored.dive.dateTime.toString() < bleCutoffDate
+                    DiveCard(stored = stored, hiddenByCutoff = hiddenByCutoff, onClick = { onDiveTap(stored) })
                 }
             }
         }
@@ -80,7 +83,7 @@ fun HomeScreenNew(
 }
 
 @Composable
-private fun DiveCard(stored: StoredDive, onClick: () -> Unit) {
+private fun DiveCard(stored: StoredDive, hiddenByCutoff: Boolean = false, onClick: () -> Unit) {
     val dive = stored.dive
     val dt = dive.dateTime
     Card(
@@ -97,11 +100,20 @@ private fun DiveCard(stored: StoredDive, onClick: () -> Unit) {
                     ),
                     style = MaterialTheme.typography.titleMedium,
                 )
-                Text(
-                    text = stored.source,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (stored.bleHidden || hiddenByCutoff) {
+                        Text(
+                            text = "BLE hidden",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                    Text(
+                        text = stored.source,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
             Spacer(modifier = Modifier.height(4.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {

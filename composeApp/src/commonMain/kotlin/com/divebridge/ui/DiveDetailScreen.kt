@@ -17,6 +17,7 @@ import kotlin.math.roundToInt
 fun DiveDetailScreen(
     storedDive: StoredDive,
     onGenerateQr: () -> Unit,
+    onToggleBleHidden: (Boolean) -> Unit,
     onDelete: () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -82,13 +83,30 @@ fun DiveDetailScreen(
                 Text("Generate QR Code")
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
-            Text(
-                text = "BLE transfer: use the BLE Emulator from the home screen to transfer all dives with profiles.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            // BLE visibility toggle
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Hide from BLE emulator", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            text = if (storedDive.bleHidden) "This dive won't be sent via Bluetooth"
+                                   else "This dive will be sent via Bluetooth",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = storedDive.bleHidden,
+                        onCheckedChange = onToggleBleHidden,
+                    )
+                }
+            }
         }
     }
 

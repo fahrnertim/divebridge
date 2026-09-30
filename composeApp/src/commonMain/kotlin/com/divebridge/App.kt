@@ -62,6 +62,7 @@ fun App(
         when (val s = screen) {
             is Screen.Home -> HomeScreenNew(
                 dives = storedDives,
+                bleCutoffDate = settings.getBleCutoffDate(),
                 onOpenFile = onPickFile,
                 onOpenSettings = { screen = Screen.Settings },
                 onOpenBle = if (bleContent != null) {
@@ -71,7 +72,9 @@ fun App(
             )
             is Screen.Settings -> SettingsScreen(
                 initialUserInfo = settings.getUserInfo(),
+                initialBleCutoff = settings.getBleCutoffDate(),
                 onSave = { settings.saveUserInfo(it) },
+                onSaveBleCutoff = { settings.setBleCutoffDate(it) },
                 onBack = { screen = Screen.Home },
             )
             is Screen.Import -> {
@@ -112,6 +115,12 @@ fun App(
                         ))
                         screen = Screen.QrCode(payload, s.storedDive.dive)
                     },
+                    onToggleBleHidden = { hidden ->
+                        diveStore.setBleHidden(s.storedDive.id, hidden)
+                        storeVersion++
+                        // Update the screen with the new state
+                        screen = Screen.DiveDetail(s.storedDive.copy(bleHidden = hidden))
+                    },
                     onDelete = {
                         diveStore.remove(s.storedDive.id)
                         storeVersion++
@@ -129,7 +138,14 @@ fun App(
                 },
             )
             is Screen.BleEmulator -> {
-                val dives = storedDives.map { it.dive }.filter { it.profile != null }
+                val cutoff = settings.getBleCutoffDate()
+                val dives = storedDives
+                    .filter { stored ->
+                        !stored.bleHidden &&
+                        stored.dive.profile != null &&
+                        (cutoff == null || stored.dive.dateTime.toString() >= cutoff)
+                    }
+                    .map { it.dive }
                 bleContent?.invoke(dives) {
                     screen = Screen.Home
                 }

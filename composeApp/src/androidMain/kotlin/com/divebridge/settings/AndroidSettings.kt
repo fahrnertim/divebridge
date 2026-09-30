@@ -64,6 +64,13 @@ class AndroidSettings(context: Context) : Settings {
         prefs.edit().putString("recent_site_ids", trimmed.joinToString(",")).apply()
     }
 
+    override fun getBleCutoffDate(): String? = prefs.getString("ble_cutoff_date", null)
+
+    override fun setBleCutoffDate(date: String?) {
+        if (date != null) prefs.edit().putString("ble_cutoff_date", date).apply()
+        else prefs.edit().remove("ble_cutoff_date").apply()
+    }
+
     override fun getDiveHistory(): List<DiveHistoryEntry> {
         val count = prefs.getInt("history_count", 0)
         return (0 until count).mapNotNull { i ->
