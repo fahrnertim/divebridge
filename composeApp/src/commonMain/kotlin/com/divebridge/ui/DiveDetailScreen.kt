@@ -66,6 +66,19 @@ fun DiveDetailScreen(
                 }
             }
 
+            // Dive profile chart
+            if (dive.profile != null && dive.profile.samples.size > 2) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        DiveProfileChart(
+                            profile = dive.profile,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(24.dp))
 
             // QR Code action
