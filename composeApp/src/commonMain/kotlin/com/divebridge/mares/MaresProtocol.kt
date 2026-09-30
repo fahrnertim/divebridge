@@ -90,11 +90,8 @@ class MaresProtocol(
                 buf
             }
             index == OBJ_DEVICE_INFO && subIndex == SUB_SERIAL -> {
-                // 16 bytes, last 6 are ASCII decimal serial
-                val buf = ByteArray(16)
-                val serialBytes = serialNumber.padStart(6, '0').take(6).toByteArray()
-                serialBytes.copyInto(buf, 10)
-                buf
+                // 6 bytes ASCII decimal serial (fits in expedited response)
+                serialNumber.padStart(6, '0').take(6).toByteArray()
             }
             index == OBJ_DIVE_COUNT && subIndex == SUB_COUNT -> {
                 // 2-byte LE count: always 1 dive
@@ -135,7 +132,7 @@ class MaresProtocol(
 
     private fun handleObjData(cmd: Byte): ByteArray {
         val data = pendingData ?: return ByteArray(0)
-        val maxPayload = 240 // leave room for toggle byte in 241-byte BLE packet
+        val maxPayload = 511 // 512 bytes total with toggle byte; BLE layer splits into notifications
 
         val remaining = data.size - pendingOffset
         val chunkSize = remaining.coerceAtMost(maxPayload)

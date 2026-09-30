@@ -41,6 +41,8 @@ class MaresBleService(
     private var connectedDevice: BluetoothDevice? = null
     private var notifyChar: BluetoothGattCharacteristic? = null
     private var isAdvertising = false
+    private var pendingServices = mutableListOf<BluetoothGattService>()
+    private var pendingCmd: Byte? = null // buffered command waiting for payload
 
     var onStateChanged: ((Boolean) -> Unit)? = null
     var onLog: ((String) -> Unit)? = null
@@ -101,6 +103,7 @@ class MaresBleService(
             CCCD_UUID,
             BluetoothGattDescriptor.PERMISSION_READ or BluetoothGattDescriptor.PERMISSION_WRITE,
         )
+        cccd.value = BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE
         notifyChar!!.addDescriptor(cccd)
         service.addCharacteristic(notifyChar!!)
 
@@ -111,8 +114,6 @@ class MaresBleService(
             BluetoothGattCharacteristic.PERMISSION_READ,
         )
         service.addCharacteristic(extraChar)
-
-        gattServer?.addService(service)
 
         // Device Information service (standard BLE)
         val deviceInfoService = BluetoothGattService(DEVICE_INFO_SERVICE_UUID, BluetoothGattService.SERVICE_TYPE_PRIMARY)
@@ -129,7 +130,7 @@ class MaresBleService(
             BluetoothGattCharacteristic.PROPERTY_READ,
             BluetoothGattCharacteristic.PERMISSION_READ,
         )
-        modelChar.value = "Puck 4".toByteArray()
+        modelChar.value = "Puck4".toByteArray()
         deviceInfoService.addCharacteristic(modelChar)
 
         val serialChar = BluetoothGattCharacteristic(
@@ -140,9 +141,11 @@ class MaresBleService(
         serialChar.value = "000001".toByteArray()
         deviceInfoService.addCharacteristic(serialChar)
 
-        gattServer?.addService(deviceInfoService)
-
-        log("GATT server started")
+        // Queue services -- must add sequentially (wait for onServiceAdded)
+        pendingServices.clear()
+        pendingServices.add(deviceInfoService)
+        gattServer?.addService(service)
+        log("GATT server started, adding services...")
     }
 
     private fun startAdvertising(adapter: BluetoothAdapter) {
@@ -168,6 +171,10 @@ class MaresBleService(
         adapter?.bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
     }
 
+    private fun sendAck() {
+        sendRaw(byteArrayOf(MaresProtocol.ACK))
+    }
+
     private fun sendResponse(data: ByteArray) {
         val device = connectedDevice ?: return
         val char = notifyChar ?: return
@@ -178,8 +185,21 @@ class MaresBleService(
         data.copyInto(framed, 1)
         framed[framed.size - 1] = MaresProtocol.END
 
-        char.value = framed
-        gattServer?.notifyCharacteristicChanged(device, char, false)
+        sendRaw(framed)
+    }
+
+    private fun sendRaw(data: ByteArray) {
+        val device = connectedDevice ?: return
+        val char = notifyChar ?: return
+        val maxChunk = 244 // safe BLE notification size
+        var offset = 0
+        while (offset < data.size) {
+            val end = (offset + maxChunk).coerceAtMost(data.size)
+            val chunk = data.copyOfRange(offset, end)
+            char.value = chunk
+            gattServer?.notifyCharacteristicChanged(device, char, false)
+            offset = end
+        }
     }
 
     private fun log(msg: String) {
@@ -242,22 +262,57 @@ class MaresBleService(
                 gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
             }
 
-            if (characteristic.uuid == WRITE_CHAR_UUID && value.size >= 2) {
-                val cmd = value[0]
-                val check = value[1]
-                if ((cmd.toInt() xor 0xA5).toByte() != check) {
-                    log("  -> invalid check byte, expected ${"%02X".format((cmd.toInt() xor 0xA5) and 0xFF)}")
+            if (characteristic.uuid == WRITE_CHAR_UUID) {
+                val proto = protocol ?: return
+
+                // Check if this is a payload for a previously received command
+                if (pendingCmd != null) {
+                    val cmd = pendingCmd!!
+                    pendingCmd = null
+                    log("  -> CMD 0x${"%02X".format(cmd)} + payload ${value.size}b")
+                    val response = proto.handleCommand(cmd, value)
+                    if (response.isNotEmpty()) {
+                        log("  <- RSP ${response.size}b (after args)")
+                        // After args, send response + END (no ACK prefix)
+                        val framed = ByteArray(response.size + 1)
+                        response.copyInto(framed, 0)
+                        framed[framed.size - 1] = MaresProtocol.END
+                        sendRaw(framed)
+                    }
                     return
                 }
 
-                val payload = if (value.size > 2) value.copyOfRange(2, value.size) else ByteArray(0)
-                log("  -> CMD 0x${"%02X".format(cmd)} payload=${payload.size}b")
+                // Must be a command (2 bytes: cmd, cmd^0xA5)
+                if (value.size >= 2) {
+                    val cmd = value[0]
+                    val check = value[1]
+                    if ((cmd.toInt() xor 0xA5).toByte() != check) {
+                        log("  -> invalid check byte, expected ${"%02X".format((cmd.toInt() xor 0xA5) and 0xFF)}")
+                        return
+                    }
 
-                val proto = protocol ?: return
-                val response = proto.handleCommand(cmd, payload)
-                if (response.isNotEmpty()) {
-                    log("  <- RSP ${response.size}b")
-                    sendResponse(response)
+                    // Commands that expect a follow-up payload
+                    val needsPayload = cmd == MaresProtocol.CMD_OBJ_INIT ||
+                            cmd == MaresProtocol.CMD_READ ||
+                            cmd == MaresProtocol.CMD_SET_TIME
+
+                    if (needsPayload && value.size == 2) {
+                        // Payload will arrive in the next write
+                        pendingCmd = cmd
+                        log("  -> CMD 0x${"%02X".format(cmd)} (waiting for payload)")
+                        // Send ACK to acknowledge command receipt
+                        sendAck()
+                        return
+                    }
+
+                    val payload = if (value.size > 2) value.copyOfRange(2, value.size) else ByteArray(0)
+                    log("  -> CMD 0x${"%02X".format(cmd)} payload=${payload.size}b")
+
+                    val response = proto.handleCommand(cmd, payload)
+                    if (response.isNotEmpty()) {
+                        log("  <- RSP ${response.size}b")
+                        sendResponse(response)
+                    }
                 }
             }
         }
@@ -267,12 +322,26 @@ class MaresBleService(
             characteristic: BluetoothGattCharacteristic,
         ) {
             log("READ [${characteristic.uuid.toString().take(8)}] offset=$offset")
-            gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset,
-                characteristic.value ?: ByteArray(0))
+            val value = when (characteristic.uuid) {
+                EXTRA_CHAR_UUID -> {
+                    // "UART version" -- return a version byte that indicates ready
+                    byteArrayOf(0x01)
+                }
+                NOTIFY_CHAR_UUID -> ByteArray(1)
+                else -> characteristic.value ?: ByteArray(0)
+            }
+            val responseValue = if (offset < value.size) value.copyOfRange(offset, value.size) else ByteArray(0)
+            gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, responseValue)
+            log("  <- READ RSP ${responseValue.size}b: ${responseValue.joinToString(" ") { "%02X".format(it) }}")
         }
 
         override fun onServiceAdded(status: Int, service: BluetoothGattService?) {
             log("Service added: status=$status uuid=${service?.uuid?.toString()?.take(8)}")
+            // Add next pending service if any
+            if (pendingServices.isNotEmpty()) {
+                val next = pendingServices.removeAt(0)
+                gattServer?.addService(next)
+            }
         }
 
         override fun onMtuChanged(device: BluetoothDevice?, mtu: Int) {
