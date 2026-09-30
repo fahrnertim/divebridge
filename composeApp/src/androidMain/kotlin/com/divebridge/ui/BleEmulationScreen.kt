@@ -2,16 +2,28 @@ package com.divebridge.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.BluetoothDisabled
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import com.divebridge.mares.MaresBleService.BleStatus
 
@@ -20,6 +32,7 @@ import com.divebridge.mares.MaresBleService.BleStatus
 fun BleEmulationScreen(
     isRunning: Boolean,
     status: BleStatus,
+    diveCount: Int,
     progress: Float,
     progressText: String,
     logs: List<String>,
@@ -28,9 +41,13 @@ fun BleEmulationScreen(
     onBack: () -> Unit,
 ) {
     var showStopConfirm by remember { mutableStateOf(false) }
+    var showLog by remember { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+
+    val isTransferring = status == BleStatus.TRANSFERRING_HEADER || status == BleStatus.TRANSFERRING_PROFILE
 
     val confirmAndLeave = {
-        if (isRunning && (status == BleStatus.TRANSFERRING_HEADER || status == BleStatus.TRANSFERRING_PROFILE)) {
+        if (isTransferring) {
             showStopConfirm = true
         } else {
             if (isRunning) onStop()
@@ -39,9 +56,6 @@ fun BleEmulationScreen(
     }
 
     BackHandler(onBack = confirmAndLeave)
-
-    var showLog by remember { mutableStateOf(false) }
-    val listState = rememberLazyListState()
 
     LaunchedEffect(logs.size) {
         if (logs.isNotEmpty() && showLog) {
@@ -52,7 +66,7 @@ fun BleEmulationScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("BLE Dive Computer") },
+                title = { Text("BLE Emulator") },
                 navigationIcon = {
                     IconButton(onClick = confirmAndLeave) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -60,7 +74,7 @@ fun BleEmulationScreen(
                 },
                 actions = {
                     TextButton(onClick = { showLog = !showLog }) {
-                        Text(if (showLog) "Hide log" else "Show log")
+                        Text(if (showLog) "Hide log" else "Log")
                     }
                 },
             )
@@ -71,126 +85,68 @@ fun BleEmulationScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            // Status card
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .animateContentSize(),
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = statusTitle(status),
-                                style = MaterialTheme.typography.titleMedium,
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = statusSubtitle(status),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        if (isRunning) {
-                            Button(onClick = onStop) { Text("Stop") }
-                        } else {
-                            Button(onClick = onStart) { Text("Start") }
-                        }
-                    }
+            Spacer(modifier = Modifier.weight(1f))
 
-                    // Progress bar for transfers
-                    if (status == BleStatus.TRANSFERRING_HEADER ||
-                        status == BleStatus.TRANSFERRING_PROFILE
-                    ) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        LinearProgressIndicator(
-                            progress = { progress },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = progressText,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+            // Central icon with halo
+            BleStatusIcon(
+                status = status,
+                isRunning = isRunning,
+                progress = progress,
+                onClick = { if (isRunning) onStop() else onStart() },
+            )
 
-                    // Indeterminate progress for waiting states
-                    if (status == BleStatus.ADVERTISING || status == BleStatus.CLIENT_CONNECTED) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                    }
+            Spacer(modifier = Modifier.height(24.dp))
 
-                    // Ready state
-                    if (status == BleStatus.DEVICE_READY) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = "Select a dive to import in the SSI app.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+            // Status text
+            Text(
+                text = statusTitle(status),
+                style = MaterialTheme.typography.titleLarge,
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = statusSubtitle(status, diveCount),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
 
-                    // Success indicator
-                    if (status == BleStatus.COMPLETE) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = "Dive profile transferred successfully!",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                    }
-                }
-            }
-
-            // Instructions
-            if (status == BleStatus.ADVERTISING) {
-                Spacer(modifier = Modifier.height(12.dp))
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    ),
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text("How to import", style = MaterialTheme.typography.titleSmall)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text("1. Open MySSI on another device", style = MaterialTheme.typography.bodySmall)
-                        Text("2. Go to Logbook and tap Import", style = MaterialTheme.typography.bodySmall)
-                        Text("3. Select Mares Puck 4", style = MaterialTheme.typography.bodySmall)
-                        Text("4. Wait for the transfer to complete", style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-            }
-
-            // Log output (collapsible)
-            if (showLog) {
-                Spacer(modifier = Modifier.height(16.dp))
-                Text("Debug Log", style = MaterialTheme.typography.titleSmall)
+            // Transfer progress text
+            if (isTransferring && progressText.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = progressText,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
 
+            Spacer(modifier = Modifier.weight(1f))
+
+            // Instructions (compact)
+            if (status == BleStatus.ADVERTISING || status == BleStatus.IDLE) {
+                Text(
+                    text = if (status == BleStatus.IDLE) "Tap the icon to start broadcasting"
+                           else "Open MySSI on another device, go to Import, and select the Mares dive computer.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
+            // Debug log (collapsible)
+            if (showLog) {
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f),
+                        .weight(2f),
                     color = MaterialTheme.colorScheme.surfaceVariant,
                     shape = MaterialTheme.shapes.small,
                 ) {
                     if (logs.isEmpty()) {
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier = Modifier.fillMaxSize(),
-                        ) {
-                            Text(
-                                "No activity yet",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                            Text("No activity yet", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     } else {
                         LazyColumn(
@@ -199,10 +155,7 @@ fun BleEmulationScreen(
                             verticalArrangement = Arrangement.spacedBy(2.dp),
                         ) {
                             items(logs) { log ->
-                                Text(
-                                    text = log,
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
+                                Text(text = log, style = MaterialTheme.typography.bodySmall)
                             }
                         }
                     }
@@ -230,24 +183,148 @@ fun BleEmulationScreen(
     }
 }
 
+@Composable
+private fun BleStatusIcon(
+    status: BleStatus,
+    isRunning: Boolean,
+    progress: Float,
+    onClick: () -> Unit,
+) {
+    val statusColor = statusColor(status)
+    val isTransferring = status == BleStatus.TRANSFERRING_HEADER || status == BleStatus.TRANSFERRING_PROFILE
+
+    // Pulse animation for advertising
+    val pulseAnim = rememberInfiniteTransition(label = "pulse")
+    val pulseScale by pulseAnim.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.15f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = EaseInOut),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "pulseScale",
+    )
+
+    // Spin animation for connecting
+    val spinAnim = rememberInfiniteTransition(label = "spin")
+    val spinAngle by spinAnim.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1500, easing = LinearEasing),
+        ),
+        label = "spinAngle",
+    )
+
+    val iconScale = when (status) {
+        BleStatus.ADVERTISING -> pulseScale
+        else -> 1f
+    }
+
+    Box(
+        modifier = Modifier
+            .size(160.dp)
+            .clip(CircleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        // Halo ring
+        Canvas(modifier = Modifier.size(160.dp)) {
+            val strokeWidth = 6.dp.toPx()
+            val radius = (size.minDimension - strokeWidth) / 2
+
+            when {
+                isTransferring -> {
+                    // Background track
+                    drawCircle(
+                        color = statusColor.copy(alpha = 0.15f),
+                        radius = radius,
+                        style = Stroke(width = strokeWidth),
+                    )
+                    // Progress arc
+                    drawArc(
+                        color = statusColor,
+                        startAngle = -90f,
+                        sweepAngle = progress * 360f,
+                        useCenter = false,
+                        style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+                        topLeft = androidx.compose.ui.geometry.Offset(strokeWidth / 2, strokeWidth / 2),
+                        size = androidx.compose.ui.geometry.Size(size.width - strokeWidth, size.height - strokeWidth),
+                    )
+                }
+                status == BleStatus.CLIENT_CONNECTED -> {
+                    // Spinning partial arc
+                    drawArc(
+                        color = statusColor,
+                        startAngle = spinAngle,
+                        sweepAngle = 90f,
+                        useCenter = false,
+                        style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+                        topLeft = androidx.compose.ui.geometry.Offset(strokeWidth / 2, strokeWidth / 2),
+                        size = androidx.compose.ui.geometry.Size(size.width - strokeWidth, size.height - strokeWidth),
+                    )
+                }
+                status != BleStatus.IDLE -> {
+                    // Solid ring
+                    drawCircle(
+                        color = statusColor.copy(alpha = if (status == BleStatus.ADVERTISING) 0.3f else 1f),
+                        radius = radius,
+                        style = Stroke(width = strokeWidth),
+                    )
+                }
+                else -> {
+                    // Gray outline
+                    drawCircle(
+                        color = statusColor.copy(alpha = 0.3f),
+                        radius = radius,
+                        style = Stroke(width = strokeWidth),
+                    )
+                }
+            }
+        }
+
+        // Icon
+        Icon(
+            imageVector = when {
+                status == BleStatus.COMPLETE -> Icons.Filled.Check
+                !isRunning -> Icons.Filled.BluetoothDisabled
+                else -> Icons.Filled.Bluetooth
+            },
+            contentDescription = null,
+            tint = statusColor,
+            modifier = Modifier
+                .size(64.dp)
+                .scale(iconScale),
+        )
+    }
+}
+
+@Composable
+private fun statusColor(status: BleStatus): Color = when (status) {
+    BleStatus.IDLE -> MaterialTheme.colorScheme.outline
+    BleStatus.COMPLETE -> Color(0xFF4CAF50) // green
+    BleStatus.ERROR -> MaterialTheme.colorScheme.error
+    else -> MaterialTheme.colorScheme.primary
+}
+
 private fun statusTitle(status: BleStatus): String = when (status) {
     BleStatus.IDLE -> "Stopped"
-    BleStatus.ADVERTISING -> "Waiting for connection..."
-    BleStatus.CLIENT_CONNECTED -> "Initializing..."
+    BleStatus.ADVERTISING -> "Waiting for connection"
+    BleStatus.CLIENT_CONNECTED -> "Initializing"
     BleStatus.DEVICE_READY -> "Connected"
-    BleStatus.TRANSFERRING_HEADER -> "Sending dive info..."
-    BleStatus.TRANSFERRING_PROFILE -> "Sending dive profile..."
+    BleStatus.TRANSFERRING_HEADER -> "Sending dive info"
+    BleStatus.TRANSFERRING_PROFILE -> "Sending dive profile"
     BleStatus.COMPLETE -> "Transfer complete"
     BleStatus.ERROR -> "Error"
 }
 
-private fun statusSubtitle(status: BleStatus): String = when (status) {
-    BleStatus.IDLE -> "Tap Start to begin emulating a Mares dive computer"
-    BleStatus.ADVERTISING -> "Broadcasting via Bluetooth"
-    BleStatus.CLIENT_CONNECTED -> "SSI app connected, setting up..."
-    BleStatus.DEVICE_READY -> "Waiting for SSI to start the dive import"
-    BleStatus.TRANSFERRING_HEADER -> "Transferring dive header data"
-    BleStatus.TRANSFERRING_PROFILE -> "Transferring depth profile samples"
-    BleStatus.COMPLETE -> "The dive should now appear in your SSI logbook"
+private fun statusSubtitle(status: BleStatus, diveCount: Int): String = when (status) {
+    BleStatus.IDLE -> "Tap the Bluetooth icon to start"
+    BleStatus.ADVERTISING -> "$diveCount dive(s) ready to transfer"
+    BleStatus.CLIENT_CONNECTED -> "SSI app connected"
+    BleStatus.DEVICE_READY -> "Waiting for SSI to start import"
+    BleStatus.TRANSFERRING_HEADER -> "Transferring dive header"
+    BleStatus.TRANSFERRING_PROFILE -> "Transferring depth profile"
+    BleStatus.COMPLETE -> "The dive should appear in your SSI logbook"
     BleStatus.ERROR -> "Something went wrong"
 }

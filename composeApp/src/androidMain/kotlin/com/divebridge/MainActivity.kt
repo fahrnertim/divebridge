@@ -101,9 +101,14 @@ class MainActivity : ComponentActivity() {
                 onShareQr = { payload -> shareQrCode(payload) },
                 colorScheme = dynamicColor,
                 bleContent = { dives, onBack ->
+                    // Auto-start BLE when entering the screen
+                    androidx.compose.runtime.LaunchedEffect(Unit) {
+                        if (!bleRunning) requestBleStart(dives)
+                    }
                     BleEmulationScreen(
                         isRunning = bleRunning,
                         status = bleStatus,
+                        diveCount = dives.size,
                         progress = bleProgress,
                         progressText = bleProgressText,
                         logs = bleLogs,

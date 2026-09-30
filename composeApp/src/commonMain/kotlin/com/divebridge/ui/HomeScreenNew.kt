@@ -6,6 +6,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.BluetoothDisabled
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -31,7 +33,9 @@ fun HomeScreenNew(
                 title = { Text("DiveBridge") },
                 actions = {
                     if (onOpenBle != null) {
-                        TextButton(onClick = onOpenBle) { Text("BLE") }
+                        IconButton(onClick = onOpenBle) {
+                            Icon(Icons.Filled.Bluetooth, contentDescription = "BLE Emulator")
+                        }
                     }
                     IconButton(onClick = onOpenSettings) {
                         Icon(Icons.Filled.Settings, contentDescription = "Settings")
@@ -110,17 +114,12 @@ private fun DiveCard(stored: StoredDive, bleHidden: Boolean, onClick: () -> Unit
                     modifier = Modifier.weight(1f),
                 )
                 if (bleHidden) {
-                    Surface(
-                        color = MaterialTheme.colorScheme.errorContainer,
-                        shape = MaterialTheme.shapes.extraSmall,
-                    ) {
-                        Text(
-                            text = "BLE hidden",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                        )
-                    }
+                    Icon(
+                        imageVector = Icons.Filled.BluetoothDisabled,
+                        contentDescription = "Hidden from BLE",
+                        tint = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.size(16.dp),
+                    )
                 }
             }
             Spacer(modifier = Modifier.height(6.dp))
