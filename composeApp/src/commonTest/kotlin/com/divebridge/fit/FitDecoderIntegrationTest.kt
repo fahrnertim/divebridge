@@ -3,6 +3,7 @@ package com.divebridge.fit
 import kotlin.test.Test
 import kotlin.test.assertTrue
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 
 class FitDecoderIntegrationTest {
 
@@ -33,6 +34,11 @@ class FitDecoderIntegrationTest {
         assertEquals(2026, dive.dateTime.year)
         assertEquals(8, dive.dateTime.monthNumber)
         assertEquals(7, dive.dateTime.dayOfMonth)
+
+        // Profile samples should be extracted
+        assertNotNull(dive.profile)
+        assertTrue(dive.profile!!.samples.size > 100, "Expected many samples, got ${dive.profile!!.samples.size}")
+        assertTrue(dive.profile!!.samples.any { it.depthMeters > 1.0 }, "Expected some depth samples")
     }
 
     @Test

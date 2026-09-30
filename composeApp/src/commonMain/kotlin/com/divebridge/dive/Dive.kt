@@ -13,6 +13,7 @@ data class Dive(
     val minWaterTempCelsius: Double,
     val maxWaterTempCelsius: Double,
     val sport: DiveSport = DiveSport.SCUBA,
+    val profile: DiveProfile? = null,
 )
 
 enum class DiveSport {

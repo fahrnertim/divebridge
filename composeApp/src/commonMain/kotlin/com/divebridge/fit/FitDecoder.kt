@@ -1,6 +1,8 @@
 package com.divebridge.fit
 
 import com.divebridge.dive.Dive
+import com.divebridge.dive.DiveProfile
+import com.divebridge.dive.DiveSample
 import com.divebridge.dive.DiveSport
 import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
@@ -22,6 +24,7 @@ object FitDecoder {
     private val FIT_SIGNATURE = byteArrayOf('.'.code.toByte(), 'F'.code.toByte(), 'I'.code.toByte(), 'T'.code.toByte())
 
     private const val MESG_SESSION = 18
+    private const val MESG_RECORD = 20
     private const val MESG_ACTIVITY = 34
     private const val MESG_DIVE_SUMMARY = 268
 
@@ -45,6 +48,8 @@ object FitDecoder {
         var activityLocalTimestamp: Long? = null
         var maxDepth: Double? = null
         var bottomTime: Double? = null
+        val samples = mutableListOf<DiveSample>()
+        var firstRecordTimestamp: Long? = null
 
         while (offset < dataEnd) {
             val recordHeader = data[offset].toInt() and 0xFF
@@ -127,6 +132,35 @@ object FitDecoder {
                             summaryBottomTime?.let { bottomTime = it.toDouble() / 1000.0 / 60.0 }
                         }
                     }
+                    MESG_RECORD -> {
+                        var recordTs: Long? = null
+                        var recordDepth: Double? = null
+                        var recordTemp: Double? = null
+
+                        for (field in def.fields) {
+                            val fo = msgStart + field.offsetInRecord
+                            when (field.fieldDefNum) {
+                                253 -> if (field.size == 4) recordTs = readUInt32(data, fo)
+                                // field 92 = depth (uint32, scale 1000, meters) -- Garmin dive records
+                                92 -> if (field.size == 4) {
+                                    val raw = readUInt32(data, fo)
+                                    if (raw != UINT32_INVALID) recordDepth = raw.toDouble() / 1000.0
+                                }
+                                // field 13 = temperature (sint8, Celsius)
+                                13 -> if (field.size == 1) recordTemp = data[fo].toDouble()
+                            }
+                        }
+
+                        if (recordTs != null && recordDepth != null) {
+                            if (firstRecordTimestamp == null) firstRecordTimestamp = recordTs
+                            val timeOffset = (recordTs - firstRecordTimestamp!!).toInt()
+                            samples.add(DiveSample(
+                                timeSeconds = timeOffset,
+                                depthMeters = recordDepth,
+                                temperatureCelsius = recordTemp ?: 0.0,
+                            ))
+                        }
+                    }
                 }
 
                 offset = msgStart + def.recordSize + def.devFieldSize
@@ -156,6 +190,7 @@ object FitDecoder {
             maxWaterTempCelsius = sessionMaxTemp?.toDouble()
                 ?: throw FitParseException("No max temperature found"),
             sport = mapSport(sessionSport, sessionSubSport),
+            profile = if (samples.isNotEmpty()) DiveProfile(samples) else null,
         )
     }
 
