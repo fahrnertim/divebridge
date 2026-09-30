@@ -54,7 +54,7 @@ class MaresBleService(
     var onProgress: ((Int, Int) -> Unit)? = null // transferred, total
 
     enum class BleStatus {
-        IDLE, ADVERTISING, CLIENT_CONNECTED, TRANSFERRING_HEADER, TRANSFERRING_PROFILE, COMPLETE, ERROR
+        IDLE, ADVERTISING, CLIENT_CONNECTED, DEVICE_READY, TRANSFERRING_HEADER, TRANSFERRING_PROFILE, COMPLETE, ERROR
     }
 
     fun start(dive: Dive) {
@@ -224,6 +224,11 @@ class MaresBleService(
                     else -> "obj 0x${"%04X".format(idx)}/0x${"%02X".format(sub)}"
                 }
                 log("OBJ_INIT -> $objName")
+
+                // Firmware query is the last step of device recognition
+                if (idx == 0x2006 && sub == 0x0C) {
+                    onStatusChanged?.invoke(BleStatus.DEVICE_READY)
+                }
             }
 
             val response = proto.handleCommand(cmd, value)

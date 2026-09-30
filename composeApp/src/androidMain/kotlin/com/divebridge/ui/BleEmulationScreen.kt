@@ -118,6 +118,16 @@ fun BleEmulationScreen(
                         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                     }
 
+                    // Ready state
+                    if (status == BleStatus.DEVICE_READY) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "Select a dive to import in the SSI app.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+
                     // Success indicator
                     if (status == BleStatus.COMPLETE) {
                         Spacer(modifier = Modifier.height(12.dp))
@@ -196,7 +206,8 @@ fun BleEmulationScreen(
 private fun statusTitle(status: BleStatus): String = when (status) {
     BleStatus.IDLE -> "Stopped"
     BleStatus.ADVERTISING -> "Waiting for connection..."
-    BleStatus.CLIENT_CONNECTED -> "Device connected"
+    BleStatus.CLIENT_CONNECTED -> "Initializing..."
+    BleStatus.DEVICE_READY -> "Connected"
     BleStatus.TRANSFERRING_HEADER -> "Sending dive info..."
     BleStatus.TRANSFERRING_PROFILE -> "Sending dive profile..."
     BleStatus.COMPLETE -> "Transfer complete"
@@ -206,7 +217,8 @@ private fun statusTitle(status: BleStatus): String = when (status) {
 private fun statusSubtitle(status: BleStatus): String = when (status) {
     BleStatus.IDLE -> "Tap Start to begin emulating a Mares Puck 4"
     BleStatus.ADVERTISING -> "Broadcasting as Puck 4 via Bluetooth"
-    BleStatus.CLIENT_CONNECTED -> "SSI app connected, initializing..."
+    BleStatus.CLIENT_CONNECTED -> "SSI app connected, setting up..."
+    BleStatus.DEVICE_READY -> "Waiting for SSI to start the dive import"
     BleStatus.TRANSFERRING_HEADER -> "Transferring dive header data"
     BleStatus.TRANSFERRING_PROFILE -> "Transferring depth profile samples"
     BleStatus.COMPLETE -> "The dive should now appear in your SSI logbook"
