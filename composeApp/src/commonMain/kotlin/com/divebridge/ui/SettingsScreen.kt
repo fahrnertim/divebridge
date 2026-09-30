@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -38,7 +40,9 @@ fun SettingsScreen(
             TopAppBar(
                 title = { Text("Settings") },
                 navigationIcon = {
-                    TextButton(onClick = onBack) { Text("Back") }
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
                 },
                 actions = {
                     TextButton(onClick = {
@@ -54,105 +58,110 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp)
                 .verticalScroll(rememberScrollState()),
         ) {
-            Text("SSI Profile", style = MaterialTheme.typography.titleMedium)
-            Spacer(modifier = Modifier.height(12.dp))
-            OutlinedTextField(
-                value = firstName,
-                onValueChange = { firstName = it },
-                label = { Text("First name") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            OutlinedTextField(
-                value = lastName,
-                onValueChange = { lastName = it },
-                label = { Text("Last name") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            OutlinedTextField(
-                value = masterId,
-                onValueChange = { masterId = it.filter { c -> c.isDigit() } },
-                label = { Text("SSI User Master ID") },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "Find your Master ID in the MySSI app under Profile.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            Text("BLE Emulator", style = MaterialTheme.typography.titleMedium)
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("Hide dives before date", style = MaterialTheme.typography.bodyMedium)
-                Switch(
-                    checked = bleCutoffEnabled,
-                    onCheckedChange = { bleCutoffEnabled = it },
+            // SSI Profile section
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("SSI Profile", style = MaterialTheme.typography.titleMedium)
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = firstName,
+                    onValueChange = { firstName = it },
+                    label = { Text("First name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
                 )
-            }
-
-            if (bleCutoffEnabled) {
-                var showDatePicker by remember { mutableStateOf(false) }
-
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
-                    value = bleCutoff,
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("Cutoff date") },
-                    placeholder = { Text("Tap to select") },
+                    value = lastName,
+                    onValueChange = { lastName = it },
+                    label = { Text("Last name") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                        .clickable { showDatePicker = true },
-                    enabled = false,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        disabledTextColor = MaterialTheme.colorScheme.onSurface,
-                        disabledBorderColor = MaterialTheme.colorScheme.outline,
-                        disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = masterId,
+                    onValueChange = { masterId = it.filter { c -> c.isDigit() } },
+                    label = { Text("Master ID") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Dives before this date won't be sent via Bluetooth.",
+                    text = "Found in MySSI app under Profile.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
 
-                if (showDatePicker) {
-                    val datePickerState = rememberDatePickerState()
-                    DatePickerDialog(
-                        onDismissRequest = { showDatePicker = false },
-                        confirmButton = {
-                            TextButton(onClick = {
-                                datePickerState.selectedDateMillis?.let { millis ->
-                                    val date = Instant.fromEpochMilliseconds(millis)
-                                        .toLocalDateTime(TimeZone.currentSystemDefault()).date
-                                    bleCutoff = date.toString()
-                                }
-                                showDatePicker = false
-                            }) { Text("OK") }
-                        },
-                        dismissButton = {
-                            TextButton(onClick = { showDatePicker = false }) { Text("Cancel") }
-                        },
-                    ) {
-                        DatePicker(state = datePickerState)
+            HorizontalDivider()
+
+            // BLE section
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("BLE Emulator", style = MaterialTheme.typography.titleMedium)
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Exclude older dives", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            text = "Hide dives before a date from Bluetooth transfers",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = bleCutoffEnabled,
+                        onCheckedChange = { bleCutoffEnabled = it },
+                    )
+                }
+
+                if (bleCutoffEnabled) {
+                    var showDatePicker by remember { mutableStateOf(false) }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = bleCutoff,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Cutoff date") },
+                        placeholder = { Text("Tap to select") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().clickable { showDatePicker = true },
+                        enabled = false,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                            disabledBorderColor = MaterialTheme.colorScheme.outline,
+                            disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
+                    )
+
+                    if (showDatePicker) {
+                        val datePickerState = rememberDatePickerState()
+                        DatePickerDialog(
+                            onDismissRequest = { showDatePicker = false },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    datePickerState.selectedDateMillis?.let { millis ->
+                                        val date = Instant.fromEpochMilliseconds(millis)
+                                            .toLocalDateTime(TimeZone.currentSystemDefault()).date
+                                        bleCutoff = date.toString()
+                                    }
+                                    showDatePicker = false
+                                }) { Text("OK") }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { showDatePicker = false }) { Text("Cancel") }
+                            },
+                        ) {
+                            DatePicker(state = datePickerState)
+                        }
                     }
                 }
             }

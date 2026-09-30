@@ -85,6 +85,12 @@ class MainActivity : ComponentActivity() {
 
     private fun setupContent() {
         setContent {
+            val dynamicColor = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                androidx.compose.material3.dynamicDarkColorScheme(this)
+                    .takeIf { resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES }
+                    ?: androidx.compose.material3.dynamicLightColorScheme(this)
+            } else null
+
             App(
                 settings = settings,
                 diveStore = diveStore,
@@ -93,6 +99,7 @@ class MainActivity : ComponentActivity() {
                 },
                 onSetBrightness = { brightness -> setBrightness(brightness) },
                 onShareQr = { payload -> shareQrCode(payload) },
+                colorScheme = dynamicColor,
                 bleContent = { dives, onBack ->
                     BleEmulationScreen(
                         isRunning = bleRunning,

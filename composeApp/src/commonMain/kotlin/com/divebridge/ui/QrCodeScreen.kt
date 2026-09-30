@@ -4,6 +4,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,9 +23,8 @@ fun QrCodeScreen(
     onBack: () -> Unit,
 ) {
     BackHandler(onBack = onBack)
-    var showDebug by remember { mutableStateOf(false) }
+    var showPayload by remember { mutableStateOf(false) }
 
-    // Max brightness while showing QR, restore on leave
     DisposableEffect(Unit) {
         onSetBrightness(1f)
         onDispose { onSetBrightness(-1f) }
@@ -34,16 +35,19 @@ fun QrCodeScreen(
             TopAppBar(
                 title = { Text("QR Code") },
                 navigationIcon = {
-                    TextButton(onClick = onBack) { Text("Back") }
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
                 },
                 actions = {
-                    TextButton(onClick = { onShare(payload) }) {
-                        Text("Share")
-                    }
-                    TextButton(onClick = { showDebug = !showDebug }) {
-                        Text(if (showDebug) "Hide" else "Debug")
-                    }
+                    TextButton(onClick = { onShare(payload) }) { Text("Share") }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.White,
+                    titleContentColor = Color.Black,
+                    navigationIconContentColor = Color.Black,
+                    actionIconContentColor = Color.Black,
+                ),
             )
         },
     ) { padding ->
@@ -53,10 +57,10 @@ fun QrCodeScreen(
                 .padding(padding)
                 .background(Color.White),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
         ) {
-            val qrPainter = rememberQrCodePainter(data = payload)
+            Spacer(modifier = Modifier.weight(1f))
 
+            val qrPainter = rememberQrCodePainter(data = payload)
             Image(
                 painter = qrPainter,
                 contentDescription = "QR Code for MySSI",
@@ -66,15 +70,32 @@ fun QrCodeScreen(
                     .padding(32.dp),
             )
 
-            if (showDebug) {
-                Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = "Scan this code in the MySSI app",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.Gray,
+            )
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            // Payload toggle at bottom
+            TextButton(onClick = { showPayload = !showPayload }) {
+                Text(
+                    text = if (showPayload) "Hide payload" else "Show payload",
+                    color = Color.Gray,
+                )
+            }
+
+            if (showPayload) {
                 Text(
                     text = payload,
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color.Black,
-                    modifier = Modifier.padding(horizontal = 16.dp),
+                    color = Color.DarkGray,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 )
             }
+
+            Spacer(modifier = Modifier.height(8.dp))
         }
     }
 }

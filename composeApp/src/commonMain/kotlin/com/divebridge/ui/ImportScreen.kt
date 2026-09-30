@@ -5,15 +5,15 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.divebridge.dive.Dive
-import com.divebridge.dive.DiveSport
 import com.divebridge.ssi.*
-import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -32,9 +32,11 @@ fun ImportScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Import Dive") },
+                title = { Text("Review Dive") },
                 navigationIcon = {
-                    TextButton(onClick = onBack) { Text("Cancel") }
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Filled.Close, contentDescription = "Cancel")
+                    }
                 },
                 actions = {
                     TextButton(onClick = {
@@ -57,7 +59,6 @@ fun ImportScreen(
                 .padding(16.dp)
                 .verticalScroll(rememberScrollState()),
         ) {
-            // Dive data card
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     val dt = dive.dateTime
@@ -66,19 +67,19 @@ fun ImportScreen(
                     ))
                     InfoRow("Max depth", "%.1f m".format(dive.maxDepthMeters))
                     InfoRow("Bottom time", formatDiveTime(dive.diveTimeMinutes))
-                    InfoRow("Water temp", "${dive.minWaterTempCelsius.roundToInt()} - ${dive.maxWaterTempCelsius.roundToInt()} C")
+                    InfoRow("Water temp", formatTemp(dive.minWaterTempCelsius, dive.maxWaterTempCelsius))
                     InfoRow("Sport", dive.sport.displayName())
                     if (dive.tank != null) {
-                        InfoRow("Tank", "${dive.tank.startPressureBar.roundToInt()} -> ${dive.tank.endPressureBar.roundToInt()} bar")
+                        InfoRow("Tank", "${dive.tank.startPressureBar.toInt()} ${Typography.rarrow} ${dive.tank.endPressureBar.toInt()} bar")
                     }
                     if (dive.profile != null) {
-                        InfoRow("Profile", "${dive.profile.samples.size} samples")
+                        InfoRow("Profile", "Depth profile available")
                     }
                 }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
-            Text("Dive Details (for QR export)", style = MaterialTheme.typography.titleMedium)
+            Text("Log Details", style = MaterialTheme.typography.titleMedium)
             Spacer(modifier = Modifier.height(12.dp))
 
             OutlinedTextField(
@@ -128,34 +129,6 @@ fun ImportScreen(
             )
         }
     }
-}
-
-@Composable
-private fun InfoRow(label: String, value: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, style = MaterialTheme.typography.bodyMedium)
-    }
-}
-
-private fun DiveSport.displayName(): String = when (this) {
-    DiveSport.SCUBA -> "Scuba"
-    DiveSport.FREEDIVING -> "Freediving"
-    DiveSport.EXTENDED_RANGE -> "Extended Range"
-    DiveSport.REBREATHER_SCR -> "Rebreather (SCR)"
-    DiveSport.REBREATHER_CCR -> "Rebreather (CCR)"
-    DiveSport.UNKNOWN -> "Unknown"
-}
-
-private fun formatDiveTime(minutes: Double): String {
-    val totalSeconds = (minutes * 60).roundToInt()
-    val h = totalSeconds / 3600
-    val m = (totalSeconds % 3600) / 60
-    val s = totalSeconds % 60
-    return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

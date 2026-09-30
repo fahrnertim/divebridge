@@ -1,7 +1,11 @@
 package com.divebridge
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import com.divebridge.dive.Dive
 import com.divebridge.dive.DiveHistoryEntry
 import com.divebridge.dive.DiveStore
@@ -12,6 +16,7 @@ import com.divebridge.settings.Settings
 import com.divebridge.ssi.SsiPayloadBuilder
 import com.divebridge.ssi.toSsiDiveType
 import com.divebridge.ui.*
+import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
 
 sealed class Screen {
@@ -31,11 +36,14 @@ fun App(
     onPickFile: () -> Unit,
     onSetBrightness: (Float) -> Unit,
     onShareQr: (String) -> Unit,
+    colorScheme: ColorScheme? = null,
     bleContent: (@Composable (List<Dive>, () -> Unit) -> Unit)? = null,
     fileBytes: ByteArray?,
 ) {
     var screen by remember { mutableStateOf<Screen>(Screen.Home) }
     var storeVersion by remember { mutableStateOf(0) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     // When new file bytes arrive, validate and parse
     LaunchedEffect(fileBytes) {
@@ -58,7 +66,8 @@ fun App(
     // Read store whenever storeVersion changes
     val storedDives = remember(storeVersion) { diveStore.getAll() }
 
-    MaterialTheme {
+    MaterialTheme(colorScheme = colorScheme ?: MaterialTheme.colorScheme) {
+        Box(modifier = Modifier.fillMaxSize()) {
         when (val s = screen) {
             is Screen.Home -> HomeScreenNew(
                 dives = storedDives,
@@ -92,6 +101,7 @@ fun App(
                         diveStore.add(s.dive, "garmin-fit")
                         storeVersion++
                         screen = Screen.Home
+                        scope.launch { snackbarHostState.showSnackbar("Dive saved") }
                     },
                     onBack = { screen = Screen.Home },
                 )
@@ -154,6 +164,11 @@ fun App(
                 message = s.message,
                 onBack = { screen = Screen.Home },
             )
+        }
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
         }
     }
 }

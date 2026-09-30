@@ -13,3 +13,4 @@
 *.aab
 *.ap_
 *.dex
+.tmp/

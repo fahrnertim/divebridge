@@ -4,13 +4,16 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.divebridge.dive.StoredDive
-import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -30,52 +33,52 @@ fun HomeScreenNew(
                     if (onOpenBle != null) {
                         TextButton(onClick = onOpenBle) { Text("BLE") }
                     }
-                    TextButton(onClick = onOpenSettings) { Text("Settings") }
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(Icons.Filled.Settings, contentDescription = "Settings")
+                    }
                 },
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = onOpenFile) {
-                Text("+", style = MaterialTheme.typography.headlineSmall)
-            }
+            ExtendedFloatingActionButton(
+                onClick = onOpenFile,
+                icon = { Icon(Icons.Filled.Add, contentDescription = null) },
+                text = { Text("Import") },
+            )
         },
     ) { padding ->
         if (dives.isEmpty()) {
-            // Empty state
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
-                    .padding(16.dp),
+                    .padding(32.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
                 Text(
                     text = "No dives yet",
-                    style = MaterialTheme.typography.headlineMedium,
+                    style = MaterialTheme.typography.headlineSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Import a FIT file from your dive computer\nor share one from the Garmin Dive app",
+                    text = "Share a FIT file from the Garmin Dive app\nor tap Import to open one manually.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Spacer(modifier = Modifier.height(24.dp))
-                Button(onClick = onOpenFile) {
-                    Text("Import FIT file")
-                }
             }
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(16.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 items(dives) { stored ->
                     val hiddenByCutoff = bleCutoffDate != null &&
                             stored.dive.dateTime.toString() < bleCutoffDate
-                    DiveCard(stored = stored, hiddenByCutoff = hiddenByCutoff, onClick = { onDiveTap(stored) })
+                    val bleHidden = stored.bleHidden || hiddenByCutoff
+                    DiveCard(stored = stored, bleHidden = bleHidden, onClick = { onDiveTap(stored) })
                 }
             }
         }
@@ -83,62 +86,61 @@ fun HomeScreenNew(
 }
 
 @Composable
-private fun DiveCard(stored: StoredDive, hiddenByCutoff: Boolean = false, onClick: () -> Unit) {
+private fun DiveCard(stored: StoredDive, bleHidden: Boolean, onClick: () -> Unit) {
     val dive = stored.dive
     val dt = dive.dateTime
+
     Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        colors = if (bleHidden) CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        ) else CardDefaults.cardColors(),
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
                     text = "%04d-%02d-%02d  %02d:%02d".format(
                         dt.year, dt.monthNumber, dt.dayOfMonth, dt.hour, dt.minute
                     ),
                     style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f),
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (stored.bleHidden || hiddenByCutoff) {
+                if (bleHidden) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        shape = MaterialTheme.shapes.extraSmall,
+                    ) {
                         Text(
                             text = "BLE hidden",
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.error,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                         )
                     }
-                    Text(
-                        text = stored.source,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
                 }
             }
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(6.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text(
                     text = "%.1f m".format(dive.maxDepthMeters),
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Text(
-                    text = formatTime(dive.diveTimeMinutes),
+                    text = formatDiveTime(dive.diveTimeMinutes),
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Text(
-                    text = "${dive.minWaterTempCelsius.roundToInt()}-${dive.maxWaterTempCelsius.roundToInt()} C",
+                    text = formatTemp(dive.minWaterTempCelsius, dive.maxWaterTempCelsius),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
     }
-}
-
-private fun formatTime(minutes: Double): String {
-    val totalSeconds = (minutes * 60).roundToInt()
-    val h = totalSeconds / 3600
-    val m = (totalSeconds % 3600) / 60
-    val s = totalSeconds % 60
-    return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
 }
