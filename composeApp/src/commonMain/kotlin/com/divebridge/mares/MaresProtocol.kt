@@ -106,6 +106,18 @@ class MaresProtocol(
             index >= OBJ_DIVE_BASE && subIndex == SUB_PROFILE -> {
                 diveProfile
             }
+            // 0x2000/0x08: hardware version
+            index == OBJ_DEVICE_INFO && subIndex == 0x08 -> {
+                byteArrayOf(1, 0, 0, 0)
+            }
+            // 0x2000/0x0A: production info
+            index == OBJ_DEVICE_INFO && subIndex == 0x0A -> {
+                byteArrayOf(1, 0, 0, 0)
+            }
+            // 0x2006/0x0C: firmware version
+            index == 0x2006 && subIndex == 0x0C -> {
+                "1.0.0\u0000".toByteArray()
+            }
             else -> ByteArray(0)
         }
     }

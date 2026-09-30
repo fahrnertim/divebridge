@@ -50,6 +50,12 @@ class MaresBleService(
 
     var onStateChanged: ((Boolean) -> Unit)? = null
     var onLog: ((String) -> Unit)? = null
+    var onStatusChanged: ((BleStatus) -> Unit)? = null
+    var onProgress: ((Int, Int) -> Unit)? = null // transferred, total
+
+    enum class BleStatus {
+        IDLE, ADVERTISING, CLIENT_CONNECTED, TRANSFERRING_HEADER, TRANSFERRING_PROFILE, COMPLETE, ERROR
+    }
 
     fun start(dive: Dive) {
         protocol = MaresProtocol(dive)
@@ -86,6 +92,7 @@ class MaresBleService(
             savedAdapterName = null
         }
         onStateChanged?.invoke(false)
+        onStatusChanged?.invoke(BleStatus.IDLE)
         log("Stopped")
     }
 
@@ -229,6 +236,14 @@ class MaresBleService(
                             ((response[7].toInt() and 0xFF) shl 24)
                     transferredBytes = 0
                     log("  Starting transfer: $totalTransferBytes bytes")
+
+                    // Detect header vs profile transfer
+                    if (value.size >= 4) {
+                        val sub = value[3].toInt() and 0xFF
+                        if (sub == 0x02) onStatusChanged?.invoke(BleStatus.TRANSFERRING_HEADER)
+                        else if (sub == 0x03) onStatusChanged?.invoke(BleStatus.TRANSFERRING_PROFILE)
+                    }
+                    onProgress?.invoke(0, totalTransferBytes)
                 }
                 val framed = ByteArray(response.size + 1)
                 response.copyInto(framed, 0)
@@ -269,8 +284,10 @@ class MaresBleService(
                         val pct = (transferredBytes * 100) / totalTransferBytes
                         log("${cmdName(cmd)} -> ${response.size}b ($pct% of $totalTransferBytes)")
                     }
+                    onProgress?.invoke(transferredBytes, totalTransferBytes)
                     if (!proto.hasPendingData()) {
                         log("Transfer complete: $transferredBytes bytes sent")
+                        onStatusChanged?.invoke(BleStatus.COMPLETE)
                     }
                 } else {
                     log("${cmdName(cmd)} -> ${response.size}b response")
@@ -328,6 +345,7 @@ class MaresBleService(
         override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
             isAdvertising = true
             onStateChanged?.invoke(true)
+            onStatusChanged?.invoke(BleStatus.ADVERTISING)
             log("Advertising as Puck4")
         }
 
@@ -349,6 +367,7 @@ class MaresBleService(
                     pendingCmd = null
                     currentMtu = 23
                     log("Device disconnected, restarting advertising")
+                    onStatusChanged?.invoke(BleStatus.ADVERTISING)
                     val bm = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
                     bm.adapter?.let { startAdvertising(it) }
                 }
@@ -378,6 +397,7 @@ class MaresBleService(
                     else -> "Unknown"
                 }
                 log("Client accepted: $name (${device.address}) type=$type MTU=$currentMtu")
+                onStatusChanged?.invoke(BleStatus.CLIENT_CONNECTED)
                 stopAdvertising()
             }
         }
@@ -431,10 +451,7 @@ class MaresBleService(
         override fun onMtuChanged(device: BluetoothDevice?, mtu: Int) {
             if (connectedDevice == null || device?.address == connectedDevice?.address) {
                 currentMtu = mtu
-                // Match chunk size to MTU so each response fits in one notification
-                val chunkSize = (mtu - 7).coerceIn(20, 511)
-                protocol?.maxDataChunkSize = chunkSize
-                log("MTU changed: $mtu (chunk size: $chunkSize)")
+                log("MTU changed: $mtu")
             }
         }
 

@@ -33,6 +33,9 @@ class MainActivity : ComponentActivity() {
 
     private var bleService: MaresBleService? = null
     private var bleRunning by mutableStateOf(false)
+    private var bleStatus by mutableStateOf(MaresBleService.BleStatus.IDLE)
+    private var bleProgress by mutableStateOf(0f)
+    private var bleProgressText by mutableStateOf("")
     private val bleLogs = mutableStateListOf<String>()
     private var pendingBleDive: Dive? = null
 
@@ -90,6 +93,9 @@ class MainActivity : ComponentActivity() {
                 bleContent = { dive, onBack ->
                     BleEmulationScreen(
                         isRunning = bleRunning,
+                        status = bleStatus,
+                        progress = bleProgress,
+                        progressText = bleProgressText,
                         logs = bleLogs,
                         onStart = { requestBleStart(dive) },
                         onStop = { stopBle() },
@@ -120,10 +126,18 @@ class MainActivity : ComponentActivity() {
 
     private fun startBle(dive: Dive) {
         bleLogs.clear()
+        bleStatus = MaresBleService.BleStatus.IDLE
+        bleProgress = 0f
+        bleProgressText = ""
         bleService?.stop()
         bleService = MaresBleService(applicationContext).apply {
             onStateChanged = { running -> bleRunning = running }
             onLog = { msg -> bleLogs.add(msg) }
+            onStatusChanged = { s -> bleStatus = s }
+            onProgress = { transferred, total ->
+                bleProgress = if (total > 0) transferred.toFloat() / total else 0f
+                bleProgressText = "${transferred / 1024}/${total / 1024} KB"
+            }
             start(dive)
         }
     }
@@ -131,6 +145,7 @@ class MainActivity : ComponentActivity() {
     private fun stopBle() {
         bleService?.stop()
         bleRunning = false
+        bleStatus = MaresBleService.BleStatus.IDLE
     }
 
     private fun shareQrCode(payload: String) {
