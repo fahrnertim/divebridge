@@ -1,6 +1,7 @@
 package com.divebridge
 
 import android.content.Intent
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
 import android.view.WindowManager
@@ -10,7 +11,11 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.content.FileProvider
 import com.divebridge.settings.AndroidSettings
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.qrcode.QRCodeWriter
+import java.io.File
 
 class MainActivity : ComponentActivity() {
 
@@ -55,15 +60,44 @@ class MainActivity : ComponentActivity() {
                     filePickerLauncher.launch(arrayOf("*/*"))
                 },
                 onSetBrightness = { brightness -> setBrightness(brightness) },
+                onShareQr = { payload -> shareQrCode(payload) },
                 fileBytes = fileBytes,
             )
         }
     }
 
+    private fun shareQrCode(payload: String) {
+        try {
+            val size = 800
+            val bitmap = generateQrBitmap(payload, size)
+            val file = File(cacheDir, "divebridge_qr.png")
+            file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "image/png"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(intent, "Share QR Code"))
+        } catch (e: Exception) {
+            // Silently fail -- sharing is best-effort
+        }
+    }
+
+    private fun generateQrBitmap(content: String, size: Int): Bitmap {
+        val bitMatrix = QRCodeWriter().encode(content, BarcodeFormat.QR_CODE, size, size)
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.RGB_565)
+        for (x in 0 until size) {
+            for (y in 0 until size) {
+                bitmap.setPixel(x, y, if (bitMatrix[x, y]) 0xFF000000.toInt() else 0xFFFFFFFF.toInt())
+            }
+        }
+        return bitmap
+    }
+
     private fun setBrightness(brightness: Float) {
         val lp = window.attributes
         if (brightness < 0) {
-            // Restore previous brightness
             lp.screenBrightness = savedBrightness
         } else {
             savedBrightness = lp.screenBrightness

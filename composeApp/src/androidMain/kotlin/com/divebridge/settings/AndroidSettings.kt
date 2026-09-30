@@ -2,11 +2,13 @@ package com.divebridge.settings
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.divebridge.dive.DiveHistoryEntry
 import com.divebridge.ssi.DiveSubType
 import com.divebridge.ssi.DiveType
 import com.divebridge.ssi.SsiDiveParams
 import com.divebridge.ssi.SsiUserInfo
 import com.divebridge.ssi.WaterType
+import kotlinx.datetime.LocalDateTime
 
 class AndroidSettings(context: Context) : Settings {
 
@@ -60,5 +62,41 @@ class AndroidSettings(context: Context) : Settings {
         existing.add(0, siteId)
         val trimmed = existing.take(10)
         prefs.edit().putString("recent_site_ids", trimmed.joinToString(",")).apply()
+    }
+
+    override fun getDiveHistory(): List<DiveHistoryEntry> {
+        val count = prefs.getInt("history_count", 0)
+        return (0 until count).mapNotNull { i ->
+            try {
+                DiveHistoryEntry(
+                    dateTime = LocalDateTime.parse(prefs.getString("history_${i}_datetime", "")!!),
+                    maxDepthMeters = prefs.getFloat("history_${i}_depth", 0f).toDouble(),
+                    diveTimeMinutes = prefs.getFloat("history_${i}_time", 0f).toDouble(),
+                    payload = prefs.getString("history_${i}_payload", "")!!,
+                    timestamp = prefs.getLong("history_${i}_ts", 0),
+                )
+            } catch (e: Exception) {
+                null
+            }
+        }.sortedByDescending { it.timestamp }
+    }
+
+    override fun addDiveHistoryEntry(entry: DiveHistoryEntry) {
+        val existing = getDiveHistory().toMutableList()
+        // Deduplicate by payload
+        existing.removeAll { it.payload == entry.payload }
+        existing.add(0, entry)
+        val trimmed = existing.take(50)
+        prefs.edit().apply {
+            putInt("history_count", trimmed.size)
+            trimmed.forEachIndexed { i, e ->
+                putString("history_${i}_datetime", e.dateTime.toString())
+                putFloat("history_${i}_depth", e.maxDepthMeters.toFloat())
+                putFloat("history_${i}_time", e.diveTimeMinutes.toFloat())
+                putString("history_${i}_payload", e.payload)
+                putLong("history_${i}_ts", e.timestamp)
+            }
+            apply()
+        }
     }
 }

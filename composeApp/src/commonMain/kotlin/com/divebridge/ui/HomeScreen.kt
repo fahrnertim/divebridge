@@ -11,6 +11,8 @@ import androidx.compose.ui.unit.dp
 fun HomeScreen(
     onOpenFile: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenHistory: () -> Unit,
+    historyCount: Int,
 ) {
     Column(
         modifier = Modifier
@@ -33,6 +35,12 @@ fun HomeScreen(
             Text("Open FIT file")
         }
         Spacer(modifier = Modifier.height(12.dp))
+        if (historyCount > 0) {
+            OutlinedButton(onClick = onOpenHistory) {
+                Text("History ($historyCount)")
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+        }
         OutlinedButton(onClick = onOpenSettings) {
             Text("Settings")
         }

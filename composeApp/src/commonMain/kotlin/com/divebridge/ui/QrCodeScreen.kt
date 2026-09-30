@@ -17,6 +17,7 @@ import io.github.alexzhirkevich.qrose.rememberQrCodePainter
 fun QrCodeScreen(
     payload: String,
     onSetBrightness: (Float) -> Unit,
+    onShare: (String) -> Unit,
     onBack: () -> Unit,
 ) {
     BackHandler(onBack = onBack)
@@ -36,8 +37,11 @@ fun QrCodeScreen(
                     TextButton(onClick = onBack) { Text("Back") }
                 },
                 actions = {
+                    TextButton(onClick = { onShare(payload) }) {
+                        Text("Share")
+                    }
                     TextButton(onClick = { showDebug = !showDebug }) {
-                        Text(if (showDebug) "Hide payload" else "Show payload")
+                        Text(if (showDebug) "Hide" else "Debug")
                     }
                 },
             )

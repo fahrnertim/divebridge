@@ -3,18 +3,23 @@ package com.divebridge
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import com.divebridge.dive.Dive
+import com.divebridge.dive.DiveHistoryEntry
 import com.divebridge.fit.FitDecoder
 import com.divebridge.fit.FitParseException
 import com.divebridge.settings.Settings
 import com.divebridge.ssi.SsiPayloadBuilder
 import com.divebridge.ssi.toSsiDiveType
 import com.divebridge.ui.*
+import kotlinx.datetime.Clock
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 
 sealed class Screen {
     data object Home : Screen()
     data object Settings : Screen()
+    data object History : Screen()
     data class DiveReview(val dive: Dive) : Screen()
-    data class QrCode(val payload: String) : Screen()
+    data class QrCode(val payload: String, val dive: Dive?) : Screen()
     data class Error(val message: String) : Screen()
 }
 
@@ -23,7 +28,7 @@ fun App(
     settings: Settings,
     onPickFile: () -> Unit,
     onSetBrightness: (Float) -> Unit,
-    onShareImage: ((String) -> Unit)? = null,
+    onShareQr: (String) -> Unit,
     fileBytes: ByteArray?,
 ) {
     var screen by remember { mutableStateOf<Screen>(Screen.Home) }
@@ -53,10 +58,17 @@ fun App(
             is Screen.Home -> HomeScreen(
                 onOpenFile = onPickFile,
                 onOpenSettings = { screen = Screen.Settings },
+                onOpenHistory = { screen = Screen.History },
+                historyCount = settings.getDiveHistory().size,
             )
             is Screen.Settings -> SettingsScreen(
                 initialUserInfo = settings.getUserInfo(),
                 onSave = { settings.saveUserInfo(it) },
+                onBack = { screen = Screen.Home },
+            )
+            is Screen.History -> HistoryScreen(
+                entries = settings.getDiveHistory(),
+                onSelect = { entry -> screen = Screen.QrCode(entry.payload, null) },
                 onBack = { screen = Screen.Home },
             )
             is Screen.DiveReview -> {
@@ -73,7 +85,16 @@ fun App(
                         params.siteId?.let { settings.addRecentSiteId(it) }
                         val userInfo = settings.getUserInfo()
                         val payload = SsiPayloadBuilder.build(s.dive, userInfo, params)
-                        screen = Screen.QrCode(payload)
+
+                        settings.addDiveHistoryEntry(DiveHistoryEntry(
+                            dateTime = s.dive.dateTime,
+                            maxDepthMeters = s.dive.maxDepthMeters,
+                            diveTimeMinutes = s.dive.diveTimeMinutes,
+                            payload = payload,
+                            timestamp = Clock.System.now().toEpochMilliseconds(),
+                        ))
+
+                        screen = Screen.QrCode(payload, s.dive)
                     },
                     onBack = { screen = Screen.Home },
                 )
@@ -81,8 +102,9 @@ fun App(
             is Screen.QrCode -> QrCodeScreen(
                 payload = s.payload,
                 onSetBrightness = onSetBrightness,
+                onShare = onShareQr,
                 onBack = {
-                    val dive = pendingDive
+                    val dive = s.dive ?: pendingDive
                     screen = if (dive != null) Screen.DiveReview(dive) else Screen.Home
                 },
             )
