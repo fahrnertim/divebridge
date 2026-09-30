@@ -152,6 +152,9 @@ private fun DiveInfoCard(dive: Dive) {
             InfoRow("Bottom time", formatDiveTime(dive.diveTimeMinutes))
             InfoRow("Water temp", "${dive.minWaterTempCelsius.roundToInt()} - ${dive.maxWaterTempCelsius.roundToInt()} C")
             InfoRow("Sport", dive.sport.displayName())
+            if (dive.tank != null) {
+                InfoRow("Tank", "${dive.tank.startPressureBar.roundToInt()} -> ${dive.tank.endPressureBar.roundToInt()} bar")
+            }
         }
     }
 }

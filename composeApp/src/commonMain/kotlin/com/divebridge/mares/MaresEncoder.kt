@@ -52,7 +52,7 @@ object MaresEncoder {
     /**
      * Encode just the dive header (~200 bytes).
      */
-    fun encodeHeader(dive: Dive): ByteArray {
+    fun encodeHeader(dive: Dive, model: MaresModel = MaresModel.GENIUS): ByteArray {
         val buf = ByteArray(0xC8) // 200 bytes: 0xB8 base + 16 for version >= 1.0
 
         // Type and version (bytes 0-3)
@@ -112,13 +112,22 @@ object MaresEncoder {
                 ((gasState and 0x03) shl 21)
         writeUInt32LE(buf, gasMixOffset, gasMix.toLong())
 
+        // Tank pressure data (in gas mix entry, offset +4 and +6)
+        if (model.hasAirIntegration && dive.tank != null) {
+            // Begin pressure at gasMixOffset + 4 (uint16 LE, 1/100 bar)
+            writeUInt16LE(buf, gasMixOffset + 4, (dive.tank.startPressureBar * 100).toInt())
+            // End pressure at gasMixOffset + 6 (uint16 LE, 1/100 bar)
+            writeUInt16LE(buf, gasMixOffset + 6, (dive.tank.endPressureBar * 100).toInt())
+        }
+
         return buf
     }
 
     /**
      * Encode the profile data (DSTR + samples + DEND).
+     * When hasTankData is true, AIRS records are interleaved with DPRS records.
      */
-    fun encodeProfile(dive: Dive): ByteArray {
+    fun encodeProfile(dive: Dive, hasTankData: Boolean = false): ByteArray {
         val samples = dive.profile?.resample(SAMPLE_INTERVAL_SEC) ?: emptyList()
         val out = mutableListOf<Byte>()
 
@@ -133,15 +142,33 @@ object MaresEncoder {
         // TISS record (tissue saturation -- zeroed, surface)
         out.addAll(encodeRecord(TAG_TISS, ByteArray(TISS_PAYLOAD_SIZE)))
 
+        // Interpolate tank pressure for AIRS records
+        val startBar = dive.tank?.startPressureBar ?: 200.0
+        val endBar = dive.tank?.endPressureBar ?: 50.0
+        val totalSamples = samples.size.coerceAtLeast(1)
+
         // DPRS records (depth/pressure samples every 5 seconds)
-        for (sample in samples) {
+        // with AIRS records interleaved when air integration is enabled
+        for ((i, sample) in samples.withIndex()) {
             out.addAll(encodeRecord(TAG_DPRS, encodeDprs(sample)))
+            if (hasTankData) {
+                val frac = i.toDouble() / totalSamples
+                val pressure = startBar + (endBar - startBar) * frac
+                out.addAll(encodeRecord(TAG_AIRS, encodeAirs(pressure)))
+            }
         }
 
         // DEND record (dive end)
         out.addAll(encodeRecord(TAG_DEND, ByteArray(DEND_PAYLOAD_SIZE)))
 
         return out.toByteArray()
+    }
+
+    private fun encodeAirs(pressureBar: Double): ByteArray {
+        val buf = ByteArray(AIRS_PAYLOAD_SIZE)
+        // Tank pressure at offset 0 (uint16 LE, 1/100 bar)
+        writeUInt16LE(buf, 0, (pressureBar * 100).toInt())
+        return buf
     }
 
     private fun encodeDprs(sample: DiveSample): ByteArray {

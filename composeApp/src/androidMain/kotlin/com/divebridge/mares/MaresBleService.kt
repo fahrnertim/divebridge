@@ -57,8 +57,8 @@ class MaresBleService(
         IDLE, ADVERTISING, CLIENT_CONNECTED, DEVICE_READY, TRANSFERRING_HEADER, TRANSFERRING_PROFILE, COMPLETE, ERROR
     }
 
-    fun start(dive: Dive) {
-        protocol = MaresProtocol(dive)
+    fun start(dive: Dive, model: MaresModel = DEFAULT_MODEL) {
+        protocol = MaresProtocol(dive, model)
         pendingCmd = null
 
         val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
@@ -148,7 +148,7 @@ class MaresBleService(
             BluetoothGattCharacteristic.PROPERTY_READ,
             BluetoothGattCharacteristic.PERMISSION_READ,
         )
-        modelChar.value = "Puck4".toByteArray()
+        modelChar.value = (protocol?.model?.bleName ?: "Puck4").toByteArray()
         deviceInfoService.addCharacteristic(modelChar)
 
         val serialChar = BluetoothGattCharacteristic(
@@ -168,7 +168,8 @@ class MaresBleService(
 
     private fun startAdvertising(adapter: BluetoothAdapter) {
         savedAdapterName = adapter.name
-        adapter.name = "Puck4"
+        val bleName = protocol?.model?.bleName ?: "Puck4"
+        adapter.name = bleName
 
         val settings = AdvertiseSettings.Builder()
             .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
@@ -225,8 +226,8 @@ class MaresBleService(
                 }
                 log("OBJ_INIT -> $objName")
 
-                // Firmware query is the last step of device recognition
-                if (idx == 0x2006 && sub == 0x0C) {
+                // Dive count query means device recognition is essentially done
+                if (idx == 0x2008 && sub == 0x01) {
                     onStatusChanged?.invoke(BleStatus.DEVICE_READY)
                 }
             }
@@ -351,7 +352,7 @@ class MaresBleService(
             isAdvertising = true
             onStateChanged?.invoke(true)
             onStatusChanged?.invoke(BleStatus.ADVERTISING)
-            log("Advertising as Puck4")
+            log("Advertising as ${protocol?.model?.displayName ?: "Puck 4"}")
         }
 
         override fun onStartFailure(errorCode: Int) {

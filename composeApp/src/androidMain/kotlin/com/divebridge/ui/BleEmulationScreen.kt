@@ -215,8 +215,8 @@ private fun statusTitle(status: BleStatus): String = when (status) {
 }
 
 private fun statusSubtitle(status: BleStatus): String = when (status) {
-    BleStatus.IDLE -> "Tap Start to begin emulating a Mares Puck 4"
-    BleStatus.ADVERTISING -> "Broadcasting as Puck 4 via Bluetooth"
+    BleStatus.IDLE -> "Tap Start to begin emulating a Mares dive computer"
+    BleStatus.ADVERTISING -> "Broadcasting via Bluetooth"
     BleStatus.CLIENT_CONNECTED -> "SSI app connected, setting up..."
     BleStatus.DEVICE_READY -> "Waiting for SSI to start the dive import"
     BleStatus.TRANSFERRING_HEADER -> "Transferring dive header data"

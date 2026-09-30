@@ -4,6 +4,7 @@ import com.divebridge.dive.Dive
 import com.divebridge.dive.DiveProfile
 import com.divebridge.dive.DiveSample
 import com.divebridge.dive.DiveSport
+import com.divebridge.dive.TankInfo
 import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
@@ -26,6 +27,7 @@ object FitDecoder {
     private const val MESG_SESSION = 18
     private const val MESG_RECORD = 20
     private const val MESG_ACTIVITY = 34
+    private const val MESG_TANK_SUMMARY = 233
     private const val MESG_DIVE_SUMMARY = 268
 
     // dive_summary.reference_mesg: 18 = references session (the one we want)
@@ -48,6 +50,8 @@ object FitDecoder {
         var activityLocalTimestamp: Long? = null
         var maxDepth: Double? = null
         var bottomTime: Double? = null
+        var tankStartPressure: Double? = null
+        var tankEndPressure: Double? = null
         val samples = mutableListOf<DiveSample>()
         var firstRecordTimestamp: Long? = null
 
@@ -132,6 +136,23 @@ object FitDecoder {
                             summaryBottomTime?.let { bottomTime = it.toDouble() / 1000.0 / 60.0 }
                         }
                     }
+                    MESG_TANK_SUMMARY -> {
+                        for (field in def.fields) {
+                            val fo = msgStart + field.offsetInRecord
+                            when (field.fieldDefNum) {
+                                // field 2 = start_pressure (uint16, scale 100, bar)
+                                2 -> if (field.size == 2) {
+                                    val raw = readUInt16LE(data, fo)
+                                    if (raw != 0xFFFF) tankStartPressure = raw.toDouble() / 100.0
+                                }
+                                // field 3 = end_pressure (uint16, scale 100, bar)
+                                3 -> if (field.size == 2) {
+                                    val raw = readUInt16LE(data, fo)
+                                    if (raw != 0xFFFF) tankEndPressure = raw.toDouble() / 100.0
+                                }
+                            }
+                        }
+                    }
                     MESG_RECORD -> {
                         var recordTs: Long? = null
                         var recordDepth: Double? = null
@@ -191,6 +212,9 @@ object FitDecoder {
                 ?: throw FitParseException("No max temperature found"),
             sport = mapSport(sessionSport, sessionSubSport),
             profile = if (samples.isNotEmpty()) DiveProfile(samples) else null,
+            tank = if (tankStartPressure != null && tankEndPressure != null) {
+                TankInfo(tankStartPressure!!, tankEndPressure!!)
+            } else null,
         )
     }
 

@@ -14,6 +14,13 @@ data class Dive(
     val maxWaterTempCelsius: Double,
     val sport: DiveSport = DiveSport.SCUBA,
     val profile: DiveProfile? = null,
+    val tank: TankInfo? = null,
+)
+
+data class TankInfo(
+    val startPressureBar: Double,
+    val endPressureBar: Double,
+    val o2Percent: Int = 21,
 )
 
 enum class DiveSport {

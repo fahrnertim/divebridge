@@ -4,14 +4,19 @@ import com.divebridge.dive.Dive
 
 /**
  * Handles the Mares Icon HD object protocol.
- * Translates incoming commands into responses as if we were a Puck 4.
+ * Translates incoming commands into responses as if we were a Mares dive computer.
  */
 class MaresProtocol(
     private val dive: Dive,
+    val model: MaresModel = DEFAULT_MODEL,
     private val serialNumber: String = "000001",
 ) {
-    private val diveHeader: ByteArray by lazy { MaresEncoder.encodeHeader(dive) }
-    private val diveProfile: ByteArray by lazy { MaresEncoder.encodeProfile(dive) }
+    private val diveHeader: ByteArray by lazy { MaresEncoder.encodeHeader(dive, model) }
+    private val diveProfile: ByteArray by lazy {
+        // Note: AIRS records in profile cause SSI Genius parser issues.
+        // Tank data is in the header only for now.
+        MaresEncoder.encodeProfile(dive, hasTankData = false)
+    }
 
     companion object {
         const val CMD_VERSION: Byte = 0xC2.toByte()
@@ -24,7 +29,7 @@ class MaresProtocol(
         const val ACK: Byte = 0xAA.toByte()
         const val END: Byte = 0xEA.toByte()
 
-        private const val MODEL_ID = 0x35 // Puck 4
+        // MODEL_ID is now from MaresModel
 
         // Object indices
         private const val OBJ_DEVICE_INFO = 0x2000
@@ -69,8 +74,7 @@ class MaresProtocol(
     private fun handleVersion(): ByteArray {
         val response = ByteArray(140)
         // Product name at offset 0x46 (16 bytes, null-terminated)
-        val name = "Puck4"
-        name.toByteArray().copyInto(response, 0x46)
+        model.bleName.toByteArray().copyInto(response, 0x46)
         return response
     }
 
@@ -89,7 +93,7 @@ class MaresProtocol(
             index == OBJ_DEVICE_INFO && subIndex == SUB_MODEL -> {
                 // 4-byte LE model number
                 val buf = ByteArray(4)
-                buf[0] = MODEL_ID.toByte()
+                buf[0] = model.modelId.toByte()
                 buf
             }
             index == OBJ_DEVICE_INFO && subIndex == SUB_SERIAL -> {
