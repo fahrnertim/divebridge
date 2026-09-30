@@ -44,6 +44,9 @@ class MaresProtocol(
     private var pendingOffset: Int = 0
     private var packetCounter: Int = 0
 
+    /** Max data bytes per OBJ_EVEN/ODD response. Set based on BLE MTU. */
+    var maxDataChunkSize: Int = 511
+
     /**
      * Handle a received command. Returns the response bytes to send.
      * The caller is responsible for BLE framing (ACK prefix, END suffix).
@@ -132,7 +135,7 @@ class MaresProtocol(
 
     private fun handleObjData(cmd: Byte): ByteArray {
         val data = pendingData ?: return ByteArray(0)
-        val maxPayload = 511 // 512 bytes total with toggle byte; BLE layer splits into notifications
+        val maxPayload = maxDataChunkSize
 
         val remaining = data.size - pendingOffset
         val chunkSize = remaining.coerceAtMost(maxPayload)

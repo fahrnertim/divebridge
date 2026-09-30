@@ -44,6 +44,7 @@ class MaresBleService(
     private var pendingServices = mutableListOf<BluetoothGattService>()
     private var pendingCmd: Byte? = null // buffered command waiting for payload
     private var savedAdapterName: String? = null
+    private var currentMtu: Int = 23 // BLE default; updated by onMtuChanged
 
     private val ioThread = java.util.concurrent.Executors.newSingleThreadExecutor()
 
@@ -182,6 +183,19 @@ class MaresBleService(
         adapter?.bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
     }
 
+    private var transferredBytes = 0
+    private var totalTransferBytes = 0
+
+    private fun cmdName(cmd: Byte): String = when (cmd) {
+        MaresProtocol.CMD_VERSION -> "VERSION"
+        MaresProtocol.CMD_OBJ_INIT -> "OBJ_INIT"
+        MaresProtocol.CMD_OBJ_EVEN -> "OBJ_EVEN"
+        MaresProtocol.CMD_OBJ_ODD -> "OBJ_ODD"
+        MaresProtocol.CMD_READ -> "READ"
+        MaresProtocol.CMD_SET_TIME -> "SET_TIME"
+        else -> "0x${"%02X".format(cmd)}"
+    }
+
     private fun handleProtocolWrite(value: ByteArray) {
         val proto = protocol ?: return
 
@@ -189,11 +203,33 @@ class MaresBleService(
         if (pendingCmd != null) {
             val cmd = pendingCmd!!
             pendingCmd = null
-            log("  -> CMD 0x${"%02X".format(cmd)} + payload ${value.size}b")
+
+            // Decode OBJ_INIT payload for logging
+            if (cmd == MaresProtocol.CMD_OBJ_INIT && value.size >= 4) {
+                val idx = (value[1].toInt() and 0xFF) or ((value[2].toInt() and 0xFF) shl 8)
+                val sub = value[3].toInt() and 0xFF
+                val objName = when {
+                    idx == 0x2000 && sub == 0x02 -> "model"
+                    idx == 0x2000 && sub == 0x04 -> "serial"
+                    idx == 0x2008 && sub == 0x01 -> "dive count"
+                    idx >= 0x3000 && sub == 0x02 -> "dive header #${idx - 0x3000}"
+                    idx >= 0x3000 && sub == 0x03 -> "dive profile #${idx - 0x3000}"
+                    else -> "obj 0x${"%04X".format(idx)}/0x${"%02X".format(sub)}"
+                }
+                log("OBJ_INIT -> $objName")
+            }
+
             val response = proto.handleCommand(cmd, value)
             if (response.isNotEmpty()) {
-                log("  <- RSP ${response.size}b (after args)")
-                // After args, send response + END (no ACK prefix)
+                // Check if this starts a large transfer
+                if (cmd == MaresProtocol.CMD_OBJ_INIT && response.size == 16 && response[0] == 0x41.toByte()) {
+                    totalTransferBytes = (response[4].toInt() and 0xFF) or
+                            ((response[5].toInt() and 0xFF) shl 8) or
+                            ((response[6].toInt() and 0xFF) shl 16) or
+                            ((response[7].toInt() and 0xFF) shl 24)
+                    transferredBytes = 0
+                    log("  Starting transfer: $totalTransferBytes bytes")
+                }
                 val framed = ByteArray(response.size + 1)
                 response.copyInto(framed, 0)
                 framed[framed.size - 1] = MaresProtocol.END
@@ -207,7 +243,7 @@ class MaresBleService(
             val cmd = value[0]
             val check = value[1]
             if ((cmd.toInt() xor 0xA5).toByte() != check) {
-                log("  -> invalid check byte, expected ${"%02X".format((cmd.toInt() xor 0xA5) and 0xFF)}")
+                log("Unknown write: ${value.joinToString(" ") { "%02X".format(it) }}")
                 return
             }
 
@@ -218,17 +254,27 @@ class MaresBleService(
 
             if (needsPayload && value.size == 2) {
                 pendingCmd = cmd
-                log("  -> CMD 0x${"%02X".format(cmd)} (waiting for payload)")
                 sendAck()
                 return
             }
 
             val payload = if (value.size > 2) value.copyOfRange(2, value.size) else ByteArray(0)
-            log("  -> CMD 0x${"%02X".format(cmd)} payload=${payload.size}b")
 
             val response = proto.handleCommand(cmd, payload)
             if (response.isNotEmpty()) {
-                log("  <- RSP ${response.size}b")
+                // Track transfer progress
+                if (cmd == MaresProtocol.CMD_OBJ_EVEN || cmd == MaresProtocol.CMD_OBJ_ODD) {
+                    transferredBytes += response.size - 1 // minus toggle byte
+                    if (totalTransferBytes > 0) {
+                        val pct = (transferredBytes * 100) / totalTransferBytes
+                        log("${cmdName(cmd)} -> ${response.size}b ($pct% of $totalTransferBytes)")
+                    }
+                    if (!proto.hasPendingData()) {
+                        log("Transfer complete: $transferredBytes bytes sent")
+                    }
+                } else {
+                    log("${cmdName(cmd)} -> ${response.size}b response")
+                }
                 sendResponse(response)
             }
         }
@@ -254,7 +300,7 @@ class MaresBleService(
     private fun sendRaw(data: ByteArray) {
         val device = connectedDevice ?: return
         val char = notifyChar ?: return
-        val maxChunk = 244 // safe BLE notification size
+        val maxChunk = (currentMtu - 3).coerceIn(20, 512) // ATT payload = MTU - 3
         var offset = 0
         while (offset < data.size) {
             val end = (offset + maxChunk).coerceAtMost(data.size)
@@ -294,16 +340,15 @@ class MaresBleService(
     private val gattCallback = object : BluetoothGattServerCallback() {
         override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
             if (newState == BluetoothProfile.STATE_CONNECTED) {
-                connectedDevice = device
                 log("Device connected: ${device.address}")
-                // Stop advertising to prevent duplicate Puck4 entries
-                stopAdvertising()
+                // Don't set connectedDevice yet -- wait for CCCD write to identify
+                // the real dive computer client (not random BLE scanners)
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 if (device.address == connectedDevice?.address) {
                     connectedDevice = null
                     pendingCmd = null
+                    currentMtu = 23
                     log("Device disconnected, restarting advertising")
-                    // Resume advertising for next connection
                     val bm = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
                     bm.adapter?.let { startAdvertising(it) }
                 }
@@ -322,9 +367,18 @@ class MaresBleService(
                 gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, value)
             }
 
-            // CCCD write to enable notifications
+            // CCCD write to enable notifications -- this identifies the real client
             if (descriptor.uuid == CCCD_UUID) {
-                log("Notifications enabled")
+                connectedDevice = device
+                val name = device.name ?: "unknown"
+                val type = when (device.type) {
+                    BluetoothDevice.DEVICE_TYPE_LE -> "LE"
+                    BluetoothDevice.DEVICE_TYPE_CLASSIC -> "Classic"
+                    BluetoothDevice.DEVICE_TYPE_DUAL -> "Dual"
+                    else -> "Unknown"
+                }
+                log("Client accepted: $name (${device.address}) type=$type MTU=$currentMtu")
+                stopAdvertising()
             }
         }
 
@@ -375,7 +429,16 @@ class MaresBleService(
         }
 
         override fun onMtuChanged(device: BluetoothDevice?, mtu: Int) {
-            log("MTU changed: $mtu")
+            if (connectedDevice == null || device?.address == connectedDevice?.address) {
+                currentMtu = mtu
+                // Set protocol chunk size to fit in single notification:
+                // notification = [AA] [toggle + data] [EA] = data + 3
+                // notification must fit in MTU - 3 (ATT overhead)
+                // so data = MTU - 3 - 3 = MTU - 6, minus 1 for toggle = MTU - 7
+                val chunkSize = (mtu - 7).coerceIn(20, 511)
+                protocol?.maxDataChunkSize = chunkSize
+                log("MTU changed: $mtu (chunk size: $chunkSize)")
+            }
         }
 
         override fun onDescriptorReadRequest(
