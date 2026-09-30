@@ -47,6 +47,7 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.androidx.activity.compose)
             implementation(libs.zxing.core)
+            implementation(libs.play.services.code.scanner)
         }
     }
 }

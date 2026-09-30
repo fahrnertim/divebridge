@@ -7,6 +7,7 @@ androidx-lifecycle = "2.8.4"
 kotlinx-datetime = "0.6.1"
 qrose = "1.0.1"
 zxing = "3.5.3"
+play-services-code-scanner = "16.1.0"
 
 [libraries]
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activityCompose" }
@@ -16,6 +17,7 @@ kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.
 qrose = { module = "io.github.alexzhirkevich:qrose", version.ref = "qrose" }
 qrose-core = { module = "io.github.alexzhirkevich:qrose-core", version.ref = "qrose" }
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
+play-services-code-scanner = { module = "com.google.android.gms:play-services-code-scanner", version.ref = "play-services-code-scanner" }
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 
 [plugins]

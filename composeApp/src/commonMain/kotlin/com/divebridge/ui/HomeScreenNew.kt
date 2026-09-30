@@ -9,6 +9,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.BluetoothDisabled
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,6 +26,7 @@ fun HomeScreenNew(
     onOpenFile: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenBle: (() -> Unit)?,
+    onOpenCenters: () -> Unit,
     onDiveTap: (StoredDive) -> Unit,
 ) {
     Scaffold(
@@ -32,6 +34,9 @@ fun HomeScreenNew(
             TopAppBar(
                 title = { Text("DiveBridge") },
                 actions = {
+                    IconButton(onClick = onOpenCenters) {
+                        Icon(Icons.Filled.Verified, contentDescription = "Dive Centers")
+                    }
                     if (onOpenBle != null) {
                         IconButton(onClick = onOpenBle) {
                             Icon(Icons.Filled.Bluetooth, contentDescription = "BLE Emulator")

@@ -29,7 +29,9 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var settings: AndroidSettings
     private lateinit var diveStore: com.divebridge.dive.AndroidDiveStore
+    private lateinit var centerStore: com.divebridge.center.AndroidCenterStore
     private var fileBytes by mutableStateOf<ByteArray?>(null)
+    private var scannedCenterPayload by mutableStateOf<String?>(null)
     private var savedBrightness = -1f
 
     private var bleService: MaresBleService? = null
@@ -60,6 +62,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         settings = AndroidSettings(applicationContext)
         diveStore = com.divebridge.dive.AndroidDiveStore(applicationContext)
+        centerStore = com.divebridge.center.AndroidCenterStore(applicationContext)
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
@@ -94,11 +97,14 @@ class MainActivity : ComponentActivity() {
             App(
                 settings = settings,
                 diveStore = diveStore,
+                centerStore = centerStore,
                 onPickFile = {
                     filePickerLauncher.launch(arrayOf("*/*"))
                 },
                 onSetBrightness = { brightness -> setBrightness(brightness) },
                 onShareQr = { payload -> shareQrCode(payload) },
+                onScanCenterQr = { launchCenterQrScanner() },
+                scannedCenterPayload = scannedCenterPayload,
                 colorScheme = dynamicColor,
                 bleContent = { dives, onBack ->
                     // Auto-start BLE when entering the screen
@@ -161,6 +167,18 @@ class MainActivity : ComponentActivity() {
         bleService?.stop()
         bleRunning = false
         bleStatus = MaresBleService.BleStatus.IDLE
+    }
+
+    private fun launchCenterQrScanner() {
+        val options = com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions.Builder()
+            .setBarcodeFormats(com.google.mlkit.vision.barcode.common.Barcode.FORMAT_QR_CODE)
+            .build()
+        val scanner = com.google.mlkit.vision.codescanner.GmsBarcodeScanning.getClient(this, options)
+        scanner.startScan()
+            .addOnSuccessListener { barcode ->
+                barcode.rawValue?.let { scannedCenterPayload = it }
+            }
+            .addOnFailureListener { /* user cancelled or error -- ignore */ }
     }
 
     private fun shareQrCode(payload: String) {

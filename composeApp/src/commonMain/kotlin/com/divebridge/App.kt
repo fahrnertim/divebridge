@@ -9,6 +9,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.divebridge.center.CenterStore
+import com.divebridge.center.DiveCenter
 import com.divebridge.dive.Dive
 import com.divebridge.dive.DiveHistoryEntry
 import com.divebridge.dive.DiveStore
@@ -32,6 +34,9 @@ sealed class Screen {
     data class DiveDetail(val storedDive: StoredDive) : Screen()
     data class QrCode(val payload: String, val dive: Dive?) : Screen()
     data object BleEmulator : Screen()
+    data object CenterList : Screen()
+    data object CenterImport : Screen()
+    data class CenterQr(val center: DiveCenter) : Screen()
     data class Error(val title: String, val message: String) : Screen()
 }
 
@@ -39,17 +44,37 @@ sealed class Screen {
 fun App(
     settings: Settings,
     diveStore: DiveStore,
+    centerStore: CenterStore,
     onPickFile: () -> Unit,
     onSetBrightness: (Float) -> Unit,
     onShareQr: (String) -> Unit,
+    onScanCenterQr: (() -> Unit)? = null,
+    scannedCenterPayload: String? = null,
     colorScheme: ColorScheme? = null,
     bleContent: (@Composable (List<Dive>, () -> Unit) -> Unit)? = null,
     fileBytes: ByteArray?,
 ) {
     var screen by remember { mutableStateOf<Screen>(Screen.Home) }
     var storeVersion by remember { mutableStateOf(0) }
+    var centerVersion by remember { mutableStateOf(0) }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+
+    // Handle scanned center QR
+    LaunchedEffect(scannedCenterPayload) {
+        if (scannedCenterPayload != null) {
+            val center = DiveCenter.parse(scannedCenterPayload)
+            if (center != null) {
+                centerStore.add(center)
+                centerVersion++
+                screen = Screen.CenterQr(center)
+                snackbarHostState.showSnackbar("${center.name} saved")
+            } else {
+                snackbarHostState.showSnackbar("Invalid center QR code")
+                screen = Screen.CenterImport
+            }
+        }
+    }
 
     // When new file bytes arrive, validate and parse
     LaunchedEffect(fileBytes) {
@@ -99,6 +124,7 @@ fun App(
                 onOpenBle = if (bleContent != null) {
                     { screen = Screen.BleEmulator }
                 } else null,
+                onOpenCenters = { screen = Screen.CenterList },
                 onDiveTap = { stored -> screen = Screen.DiveDetail(stored) },
             )
             is Screen.Loading -> LoadingScreen()
@@ -180,6 +206,35 @@ fun App(
                     screen = Screen.Home
                 }
             }
+            is Screen.CenterList -> {
+                val centers = remember(centerVersion) { centerStore.getAll() }
+                CenterListScreen(
+                    centers = centers,
+                    onCenterTap = { center -> screen = Screen.CenterQr(center) },
+                    onAdd = { screen = Screen.CenterImport },
+                    onBack = { screen = Screen.Home },
+                )
+            }
+            is Screen.CenterImport -> CenterImportScreen(
+                onSave = { center ->
+                    centerStore.add(center)
+                    centerVersion++
+                    screen = Screen.CenterQr(center)
+                    scope.launch { snackbarHostState.showSnackbar("${center.name} saved") }
+                },
+                onScanQr = { onScanCenterQr?.invoke() },
+                onBack = { screen = Screen.CenterList },
+            )
+            is Screen.CenterQr -> CenterQrScreen(
+                center = currentScreen.center,
+                onSetBrightness = onSetBrightness,
+                onDelete = {
+                    centerStore.remove(currentScreen.center.id)
+                    centerVersion++
+                    screen = Screen.CenterList
+                },
+                onBack = { screen = Screen.CenterList },
+            )
             is Screen.Error -> ErrorScreen(
                 title = currentScreen.title,
                 message = currentScreen.message,
