@@ -99,7 +99,7 @@ class AndroidDiveStore(context: Context) : DiveStore {
         val file = File(dir, "${stored.id}.dive")
         DataOutputStream(file.outputStream().buffered()).use { out ->
             val dive = stored.dive
-            out.writeInt(2) // version
+            out.writeInt(3) // version
             out.writeUTF(stored.id)
             out.writeUTF(stored.source)
             out.writeLong(stored.addedAtMillis)
@@ -121,6 +121,17 @@ class AndroidDiveStore(context: Context) : DiveStore {
                 out.writeInt(dive.tank.o2Percent)
             }
 
+            // GPS
+            out.writeBoolean(dive.gps != null)
+            if (dive.gps != null) {
+                out.writeDouble(dive.gps.latitude)
+                out.writeDouble(dive.gps.longitude)
+            }
+
+            // Water type and O2%
+            out.writeUTF(dive.waterType.name)
+            out.writeInt(dive.o2Percent)
+
             // Profile samples
             val samples = dive.profile?.samples ?: emptyList()
             out.writeInt(samples.size)
@@ -138,7 +149,7 @@ class AndroidDiveStore(context: Context) : DiveStore {
         return try {
             DataInputStream(file.inputStream().buffered()).use { inp ->
                 val version = inp.readInt()
-                if (version !in 1..2) return null
+                if (version !in 1..3) return null
                 val storedId = inp.readUTF()
                 val source = inp.readUTF()
                 val addedAt = inp.readLong()
@@ -156,6 +167,16 @@ class AndroidDiveStore(context: Context) : DiveStore {
                     TankInfo(inp.readDouble(), inp.readDouble(), inp.readInt())
                 } else null
 
+                // GPS and water type (version 3+)
+                val gps = if (version >= 3 && inp.readBoolean()) {
+                    GpsPosition(inp.readDouble(), inp.readDouble())
+                } else {
+                    if (version >= 3) null else null // consume the boolean for v3
+                    null
+                }
+                val waterType = if (version >= 3) WaterType.valueOf(inp.readUTF()) else WaterType.UNKNOWN
+                val o2Percent = if (version >= 3) inp.readInt() else 21
+
                 val sampleCount = inp.readInt()
                 val samples = (0 until sampleCount).map {
                     DiveSample(inp.readInt(), inp.readDouble(), inp.readDouble())
@@ -172,6 +193,9 @@ class AndroidDiveStore(context: Context) : DiveStore {
                         sport = sport,
                         profile = if (samples.isNotEmpty()) DiveProfile(samples) else null,
                         tank = tank,
+                        gps = gps,
+                        waterType = waterType,
+                        o2Percent = o2Percent,
                     ),
                     source = source,
                     addedAtMillis = addedAt,

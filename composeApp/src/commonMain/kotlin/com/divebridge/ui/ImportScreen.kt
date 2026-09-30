@@ -26,7 +26,6 @@ fun ImportScreen(
 ) {
     BackHandler(onBack = onBack)
     var siteId by remember { mutableStateOf(initialParams.siteId ?: "") }
-    var selectedWaterType by remember { mutableStateOf(initialParams.waterTypeId) }
     var selectedDiveSubType by remember { mutableStateOf(initialParams.diveSubTypeId) }
 
     Scaffold(
@@ -43,7 +42,6 @@ fun ImportScreen(
                         val params = SsiDiveParams(
                             diveType = dive.sport.toSsiDiveType(),
                             siteId = siteId.ifEmpty { null },
-                            waterTypeId = selectedWaterType,
                             diveSubTypeId = selectedDiveSubType,
                         )
                         onSave(params)
@@ -71,6 +69,12 @@ fun ImportScreen(
                     InfoRow("Sport", dive.sport.displayName())
                     if (dive.tank != null) {
                         InfoRow("Tank", "${dive.tank.startPressureBar.toInt()} ${Typography.rarrow} ${dive.tank.endPressureBar.toInt()} bar")
+                    }
+                    if (dive.waterType != com.divebridge.dive.WaterType.UNKNOWN) {
+                        InfoRow("Water", dive.waterType.name.lowercase().replaceFirstChar { it.uppercase() })
+                    }
+                    if (dive.gps != null) {
+                        InfoRow("GPS", "%.4f, %.4f".format(dive.gps.latitude, dive.gps.longitude))
                     }
                     if (dive.profile != null) {
                         InfoRow("Profile", "Depth profile available")
@@ -103,15 +107,6 @@ fun ImportScreen(
                     }
                 }
             }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            DropdownSelector(
-                label = "Water type",
-                options = listOf(null to "Not set", WaterType.FRESH to "Fresh", WaterType.SALT to "Salt"),
-                selected = selectedWaterType,
-                onSelect = { selectedWaterType = it },
-            )
 
             Spacer(modifier = Modifier.height(12.dp))
 

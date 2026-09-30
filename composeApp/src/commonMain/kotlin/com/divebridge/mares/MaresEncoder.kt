@@ -66,7 +66,11 @@ object MaresEncoder {
 
         // Settings at offset 0x0C
         val diveMode = mapDiveMode(dive.sport)
-        val waterType = 0 // Fresh by default
+        val waterType = when (dive.waterType) {
+            com.divebridge.dive.WaterType.SALT -> 1
+            com.divebridge.dive.WaterType.FRESH -> 0
+            else -> 0
+        }
         val settings = (diveMode and 0x0F) or ((waterType and 0x03) shl 5)
         writeUInt32LE(buf, 0x0C, settings.toLong())
 
@@ -100,10 +104,10 @@ object MaresEncoder {
         // Atmospheric pressure at offset 0x3E (uint16 LE, mbar)
         writeUInt16LE(buf, 0x3E, 1013) // standard atmosphere
 
-        // Gas mix at offset 0x54 (first entry: Air, 21% O2)
+        // Gas mix at offset 0x54
         val gasMixOffset = 0x54
-        val o2Pct = 21
-        val n2Pct = 79
+        val o2Pct = dive.o2Percent
+        val n2Pct = 100 - o2Pct
         val hePct = 0
         val gasState = 2 // InUse
         val gasMix = (o2Pct and 0x7F) or
@@ -179,8 +183,8 @@ object MaresEncoder {
         writeUInt16LE(buf, 0, (sample.depthMeters * 10).toInt())
         // Temperature at offset 4 (uint16 LE, 1/10 degC)
         writeUInt16LE(buf, 4, (sample.temperatureCelsius * 10).toInt())
-        // NDL time at offset 0x0A (uint16 LE, minutes) -- 99 = no deco
-        writeUInt16LE(buf, 0x0A, 99)
+        // NDL time at offset 0x0A (uint16 LE, minutes)
+        writeUInt16LE(buf, 0x0A, sample.ndlMinutes ?: 99)
         return buf
     }
 

@@ -161,8 +161,15 @@ fun App(
                     onGenerateQr = {
                         val userInfo = settings.getUserInfo()
                         val lastParams = settings.getLastDiveParams()
+                        val dive = currentScreen.storedDive.dive
+                        val waterTypeId = when (dive.waterType) {
+                            com.divebridge.dive.WaterType.FRESH -> com.divebridge.ssi.WaterType.FRESH
+                            com.divebridge.dive.WaterType.SALT -> com.divebridge.ssi.WaterType.SALT
+                            else -> lastParams.waterTypeId
+                        }
                         val params = lastParams.copy(
-                            diveType = currentScreen.storedDive.dive.sport.toSsiDiveType(),
+                            diveType = dive.sport.toSsiDiveType(),
+                            waterTypeId = waterTypeId,
                         )
                         val payload = SsiPayloadBuilder.build(currentScreen.storedDive.dive, userInfo, params)
                         settings.addDiveHistoryEntry(DiveHistoryEntry(

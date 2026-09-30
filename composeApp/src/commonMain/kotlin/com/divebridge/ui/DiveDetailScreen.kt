@@ -59,6 +59,12 @@ fun DiveDetailScreen(
                     if (dive.tank != null) {
                         InfoRow("Tank", "${dive.tank.startPressureBar.toInt()} ${Typography.rarrow} ${dive.tank.endPressureBar.toInt()} bar")
                     }
+                    if (dive.waterType != com.divebridge.dive.WaterType.UNKNOWN) {
+                        InfoRow("Water", dive.waterType.name.lowercase().replaceFirstChar { it.uppercase() })
+                    }
+                    if (dive.gps != null) {
+                        InfoRow("GPS", "%.4f, %.4f".format(dive.gps.latitude, dive.gps.longitude))
+                    }
                     if (dive.profile != null) {
                         InfoRow("Profile", "Depth profile available")
                     }

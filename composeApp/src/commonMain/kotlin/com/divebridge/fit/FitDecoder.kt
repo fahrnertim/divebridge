@@ -1,10 +1,6 @@
 package com.divebridge.fit
 
-import com.divebridge.dive.Dive
-import com.divebridge.dive.DiveProfile
-import com.divebridge.dive.DiveSample
-import com.divebridge.dive.DiveSport
-import com.divebridge.dive.TankInfo
+import com.divebridge.dive.*
 import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
@@ -28,6 +24,7 @@ object FitDecoder {
     private const val MESG_RECORD = 20
     private const val MESG_ACTIVITY = 34
     private const val MESG_TANK_SUMMARY = 233
+    private const val MESG_DIVE_SETTINGS = 258
     private const val MESG_DIVE_SUMMARY = 268
 
     // dive_summary.reference_mesg: 18 = references session (the one we want)
@@ -52,6 +49,9 @@ object FitDecoder {
         var bottomTime: Double? = null
         var tankStartPressure: Double? = null
         var tankEndPressure: Double? = null
+        var gpsLat: Double? = null
+        var gpsLon: Double? = null
+        var waterType: WaterType = WaterType.UNKNOWN
         val samples = mutableListOf<DiveSample>()
         var firstRecordTimestamp: Long? = null
 
@@ -91,6 +91,24 @@ object FitDecoder {
                                 // field 0 = event (uint8), field 1 = event_type (uint8)
                                 5 -> if (field.size == 1) sessionSport = data[fo].toInt() and 0xFF
                                 6 -> if (field.size == 1) sessionSubSport = data[fo].toInt() and 0xFF
+                                // GPS: field 3 = start_position_lat, field 4 = start_position_long (semicircles)
+                                3 -> if (field.size == 4) {
+                                    val raw = readSInt32(data, fo)
+                                    if (raw != 0x7FFFFFFF) gpsLat = raw * (180.0 / 2147483648.0)
+                                }
+                                4 -> if (field.size == 4) {
+                                    val raw = readSInt32(data, fo)
+                                    if (raw != 0x7FFFFFFF) gpsLon = raw * (180.0 / 2147483648.0)
+                                }
+                                // Fallback GPS from NE corner (field 29/30)
+                                29 -> if (field.size == 4 && gpsLat == null) {
+                                    val raw = readSInt32(data, fo)
+                                    if (raw != 0x7FFFFFFF) gpsLat = raw * (180.0 / 2147483648.0)
+                                }
+                                30 -> if (field.size == 4 && gpsLon == null) {
+                                    val raw = readSInt32(data, fo)
+                                    if (raw != 0x7FFFFFFF) gpsLon = raw * (180.0 / 2147483648.0)
+                                }
                                 // field 58 = max_temperature (sint8, Celsius)
                                 58 -> if (field.size == 1) sessionMaxTemp = data[fo].toInt()
                                 // field 150 = min_temperature (sint8, Celsius)
@@ -134,6 +152,21 @@ object FitDecoder {
                         if (referenceMesg == REFERENCE_MESG_SESSION) {
                             summaryMaxDepth?.let { maxDepth = it.toDouble() / 1000.0 }
                             summaryBottomTime?.let { bottomTime = it.toDouble() / 1000.0 / 60.0 }
+                        }
+                    }
+                    MESG_DIVE_SETTINGS -> {
+                        for (field in def.fields) {
+                            val fo = msgStart + field.offsetInRecord
+                            when (field.fieldDefNum) {
+                                // field 9 = water_type (0=fresh, 1=salt on Garmin Descent)
+                                9 -> if (field.size == 1) {
+                                    waterType = when (data[fo].toInt() and 0xFF) {
+                                        0 -> WaterType.FRESH
+                                        1 -> WaterType.SALT
+                                        else -> WaterType.UNKNOWN
+                                    }
+                                }
+                            }
                         }
                     }
                     MESG_TANK_SUMMARY -> {
@@ -215,6 +248,8 @@ object FitDecoder {
             tank = if (tankStartPressure != null && tankEndPressure != null) {
                 TankInfo(tankStartPressure!!, tankEndPressure!!)
             } else null,
+            gps = if (gpsLat != null && gpsLon != null) GpsPosition(gpsLat!!, gpsLon!!) else null,
+            waterType = waterType,
         )
     }
 
@@ -303,6 +338,13 @@ object FitDecoder {
                 ((data[offset + 1].toLong() and 0xFF) shl 8) or
                 ((data[offset + 2].toLong() and 0xFF) shl 16) or
                 ((data[offset + 3].toLong() and 0xFF) shl 24)
+    }
+
+    private fun readSInt32(data: ByteArray, offset: Int): Int {
+        return (data[offset].toInt() and 0xFF) or
+                ((data[offset + 1].toInt() and 0xFF) shl 8) or
+                ((data[offset + 2].toInt() and 0xFF) shl 16) or
+                ((data[offset + 3].toInt() and 0xFF) shl 24)
     }
 
     private const val UINT32_INVALID = 0xFFFFFFFFL

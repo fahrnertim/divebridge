@@ -8,6 +8,7 @@ data class DiveSample(
     val timeSeconds: Int,
     val depthMeters: Double,
     val temperatureCelsius: Double,
+    val ndlMinutes: Int? = null,
 )
 
 /**
@@ -48,6 +49,7 @@ data class DiveProfile(
             timeSeconds = timeSeconds,
             depthMeters = a.depthMeters + (b.depthMeters - a.depthMeters) * frac,
             temperatureCelsius = a.temperatureCelsius + (b.temperatureCelsius - a.temperatureCelsius) * frac,
+            ndlMinutes = a.ndlMinutes, // use nearest earlier sample's NDL
         )
     }
 }

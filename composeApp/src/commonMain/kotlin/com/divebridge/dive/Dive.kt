@@ -15,6 +15,9 @@ data class Dive(
     val sport: DiveSport = DiveSport.SCUBA,
     val profile: DiveProfile? = null,
     val tank: TankInfo? = null,
+    val gps: GpsPosition? = null,
+    val waterType: WaterType = WaterType.UNKNOWN,
+    val o2Percent: Int = 21,
 )
 
 data class TankInfo(
@@ -22,6 +25,15 @@ data class TankInfo(
     val endPressureBar: Double,
     val o2Percent: Int = 21,
 )
+
+data class GpsPosition(
+    val latitude: Double,
+    val longitude: Double,
+)
+
+enum class WaterType {
+    FRESH, SALT, UNKNOWN
+}
 
 enum class DiveSport {
     SCUBA,
