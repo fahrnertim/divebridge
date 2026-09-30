@@ -36,6 +36,8 @@ class AndroidDiveStore(context: Context) : DiveStore {
 
         // Remove existing dive with same datetime (re-import)
         val list = getAll().toMutableList()
+        val removed = list.filter { it.dive.dateTime == dive.dateTime }
+        removed.forEach { File(dir, "${it.id}.dive").delete() }
         list.removeAll { it.dive.dateTime == dive.dateTime }
         list.add(stored)
         cache = list.toMutableList()
@@ -62,7 +64,16 @@ class AndroidDiveStore(context: Context) : DiveStore {
         if (!indexFile.exists()) return emptyList()
         return try {
             val ids = indexFile.readLines().filter { it.isNotBlank() }
-            ids.mapNotNull { id -> loadDiveFile(id) }
+            val dives = ids.mapNotNull { id -> loadDiveFile(id) }
+            // Clean up orphaned files not in the index
+            val validIds = dives.map { it.id }.toSet()
+            dir.listFiles()?.forEach { file ->
+                if (file.name.endsWith(".dive")) {
+                    val fileId = file.nameWithoutExtension
+                    if (fileId !in validIds) file.delete()
+                }
+            }
+            dives
         } catch (e: Exception) {
             emptyList()
         }

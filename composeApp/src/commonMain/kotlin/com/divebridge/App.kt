@@ -4,6 +4,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import com.divebridge.dive.Dive
 import com.divebridge.dive.DiveHistoryEntry
+import com.divebridge.dive.DiveStore
+import com.divebridge.dive.StoredDive
 import com.divebridge.fit.FitDecoder
 import com.divebridge.fit.FitParseException
 import com.divebridge.settings.Settings
@@ -15,25 +17,25 @@ import kotlinx.datetime.Clock
 sealed class Screen {
     data object Home : Screen()
     data object Settings : Screen()
-    data object History : Screen()
-    data class DiveReview(val dive: Dive) : Screen()
+    data class Import(val dive: Dive) : Screen()
+    data class DiveDetail(val storedDive: StoredDive) : Screen()
     data class QrCode(val payload: String, val dive: Dive?) : Screen()
-    data class BleEmulation(val dives: List<Dive>) : Screen()
+    data object BleEmulator : Screen()
     data class Error(val message: String) : Screen()
 }
 
 @Composable
 fun App(
     settings: Settings,
+    diveStore: DiveStore,
     onPickFile: () -> Unit,
     onSetBrightness: (Float) -> Unit,
     onShareQr: (String) -> Unit,
-    diveStore: com.divebridge.dive.DiveStore? = null,
     bleContent: (@Composable (List<Dive>, () -> Unit) -> Unit)? = null,
     fileBytes: ByteArray?,
 ) {
     var screen by remember { mutableStateOf<Screen>(Screen.Home) }
-    var pendingDive by remember { mutableStateOf<Dive?>(null) }
+    var storeVersion by remember { mutableStateOf(0) }
 
     // When new file bytes arrive, validate and parse
     LaunchedEffect(fileBytes) {
@@ -44,9 +46,7 @@ fun App(
             }
             try {
                 val dive = FitDecoder.decode(fileBytes)
-                pendingDive = dive
-                diveStore?.add(dive, "garmin-fit")
-                screen = Screen.DiveReview(dive)
+                screen = Screen.Import(dive)
             } catch (e: FitParseException) {
                 screen = Screen.Error("Failed to parse dive data: ${e.message}")
             } catch (e: Exception) {
@@ -55,58 +55,68 @@ fun App(
         }
     }
 
+    // Read store whenever storeVersion changes
+    val storedDives = remember(storeVersion) { diveStore.getAll() }
+
     MaterialTheme {
         when (val s = screen) {
-            is Screen.Home -> HomeScreen(
+            is Screen.Home -> HomeScreenNew(
+                dives = storedDives,
                 onOpenFile = onPickFile,
                 onOpenSettings = { screen = Screen.Settings },
-                onOpenHistory = { screen = Screen.History },
-                historyCount = settings.getDiveHistory().size,
+                onOpenBle = if (bleContent != null) {
+                    { screen = Screen.BleEmulator }
+                } else null,
+                onDiveTap = { stored -> screen = Screen.DiveDetail(stored) },
             )
             is Screen.Settings -> SettingsScreen(
                 initialUserInfo = settings.getUserInfo(),
                 onSave = { settings.saveUserInfo(it) },
                 onBack = { screen = Screen.Home },
             )
-            is Screen.History -> HistoryScreen(
-                entries = settings.getDiveHistory(),
-                onSelect = { entry -> screen = Screen.QrCode(entry.payload, null) },
-                onBack = { screen = Screen.Home },
-            )
-            is Screen.DiveReview -> {
+            is Screen.Import -> {
                 val lastParams = settings.getLastDiveParams()
                 val paramsWithSport = lastParams.copy(
                     diveType = s.dive.sport.toSsiDiveType(),
                 )
-                DiveReviewScreen(
+                ImportScreen(
                     dive = s.dive,
                     initialParams = paramsWithSport,
                     recentSiteIds = settings.getRecentSiteIds(),
-                    hasBle = bleContent != null && s.dive.profile != null,
-                    onGenerate = { params ->
+                    onSave = { params ->
                         settings.saveLastDiveParams(params)
                         params.siteId?.let { settings.addRecentSiteId(it) }
+                        diveStore.add(s.dive, "garmin-fit")
+                        storeVersion++
+                        screen = Screen.Home
+                    },
+                    onBack = { screen = Screen.Home },
+                )
+            }
+            is Screen.DiveDetail -> {
+                DiveDetailScreen(
+                    storedDive = s.storedDive,
+                    onGenerateQr = {
                         val userInfo = settings.getUserInfo()
-                        val payload = SsiPayloadBuilder.build(s.dive, userInfo, params)
-
+                        val lastParams = settings.getLastDiveParams()
+                        val params = lastParams.copy(
+                            diveType = s.storedDive.dive.sport.toSsiDiveType(),
+                        )
+                        val payload = SsiPayloadBuilder.build(s.storedDive.dive, userInfo, params)
                         settings.addDiveHistoryEntry(DiveHistoryEntry(
-                            dateTime = s.dive.dateTime,
-                            maxDepthMeters = s.dive.maxDepthMeters,
-                            diveTimeMinutes = s.dive.diveTimeMinutes,
+                            dateTime = s.storedDive.dive.dateTime,
+                            maxDepthMeters = s.storedDive.dive.maxDepthMeters,
+                            diveTimeMinutes = s.storedDive.dive.diveTimeMinutes,
                             payload = payload,
                             timestamp = Clock.System.now().toEpochMilliseconds(),
                         ))
-
-                        screen = Screen.QrCode(payload, s.dive)
+                        screen = Screen.QrCode(payload, s.storedDive.dive)
                     },
-                    onBleTransfer = if (bleContent != null && s.dive.profile != null) {
-                        {
-                            val allDives = diveStore?.getAll()?.map { it.dive }
-                                ?.filter { it.profile != null }
-                                ?: listOf(s.dive)
-                            screen = Screen.BleEmulation(allDives)
-                        }
-                    } else null,
+                    onDelete = {
+                        diveStore.remove(s.storedDive.id)
+                        storeVersion++
+                        screen = Screen.Home
+                    },
                     onBack = { screen = Screen.Home },
                 )
             }
@@ -115,14 +125,13 @@ fun App(
                 onSetBrightness = onSetBrightness,
                 onShare = onShareQr,
                 onBack = {
-                    val dive = s.dive ?: pendingDive
-                    screen = if (dive != null) Screen.DiveReview(dive) else Screen.Home
+                    screen = Screen.Home
                 },
             )
-            is Screen.BleEmulation -> {
-                bleContent?.invoke(s.dives) {
-                    val dive = pendingDive
-                    screen = if (dive != null) Screen.DiveReview(dive) else Screen.Home
+            is Screen.BleEmulator -> {
+                val dives = storedDives.map { it.dive }.filter { it.profile != null }
+                bleContent?.invoke(dives) {
+                    screen = Screen.Home
                 }
             }
             is Screen.Error -> ErrorScreen(
