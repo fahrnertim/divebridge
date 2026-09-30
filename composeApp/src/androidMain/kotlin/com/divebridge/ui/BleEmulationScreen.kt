@@ -3,6 +3,8 @@ package com.divebridge.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -25,10 +27,18 @@ fun BleEmulationScreen(
     onStop: () -> Unit,
     onBack: () -> Unit,
 ) {
-    BackHandler(onBack = {
-        if (isRunning) onStop()
-        onBack()
-    })
+    var showStopConfirm by remember { mutableStateOf(false) }
+
+    val confirmAndLeave = {
+        if (isRunning && (status == BleStatus.TRANSFERRING_HEADER || status == BleStatus.TRANSFERRING_PROFILE)) {
+            showStopConfirm = true
+        } else {
+            if (isRunning) onStop()
+            onBack()
+        }
+    }
+
+    BackHandler(onBack = confirmAndLeave)
 
     var showLog by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
@@ -44,10 +54,9 @@ fun BleEmulationScreen(
             TopAppBar(
                 title = { Text("BLE Dive Computer") },
                 navigationIcon = {
-                    TextButton(onClick = {
-                        if (isRunning) onStop()
-                        onBack()
-                    }) { Text("Back") }
+                    IconButton(onClick = confirmAndLeave) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
                 },
                 actions = {
                     TextButton(onClick = { showLog = !showLog }) {
@@ -200,6 +209,24 @@ fun BleEmulationScreen(
                 }
             }
         }
+    }
+
+    if (showStopConfirm) {
+        AlertDialog(
+            onDismissRequest = { showStopConfirm = false },
+            title = { Text("Stop transfer?") },
+            text = { Text("A dive transfer is in progress. Stopping now may leave the import incomplete on the SSI side.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showStopConfirm = false
+                    onStop()
+                    onBack()
+                }) { Text("Stop", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showStopConfirm = false }) { Text("Continue") }
+            },
+        )
     }
 }
 

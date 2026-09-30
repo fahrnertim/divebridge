@@ -13,6 +13,7 @@ import androidx.compose.ui.unit.dp
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ErrorScreen(
+    title: String = "Something went wrong",
     message: String,
     onBack: () -> Unit,
 ) {
@@ -39,7 +40,7 @@ fun ErrorScreen(
             verticalArrangement = Arrangement.Center,
         ) {
             Text(
-                text = "Something went wrong",
+                text = title,
                 style = MaterialTheme.typography.headlineSmall,
                 color = MaterialTheme.colorScheme.error,
             )

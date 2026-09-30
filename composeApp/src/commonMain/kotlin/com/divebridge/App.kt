@@ -1,5 +1,8 @@
 package com.divebridge
 
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.*
@@ -16,17 +19,20 @@ import com.divebridge.settings.Settings
 import com.divebridge.ssi.SsiPayloadBuilder
 import com.divebridge.ssi.toSsiDiveType
 import com.divebridge.ui.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
 
 sealed class Screen {
     data object Home : Screen()
     data object Settings : Screen()
+    data object Loading : Screen()
     data class Import(val dive: Dive) : Screen()
     data class DiveDetail(val storedDive: StoredDive) : Screen()
     data class QrCode(val payload: String, val dive: Dive?) : Screen()
     data object BleEmulator : Screen()
-    data class Error(val message: String) : Screen()
+    data class Error(val title: String, val message: String) : Screen()
 }
 
 @Composable
@@ -48,17 +54,25 @@ fun App(
     // When new file bytes arrive, validate and parse
     LaunchedEffect(fileBytes) {
         if (fileBytes != null) {
-            if (!FitDecoder.isValidFitFile(fileBytes)) {
-                screen = Screen.Error("Not a valid FIT file. Please select a .fit file exported from a dive computer.")
-                return@LaunchedEffect
-            }
+            screen = Screen.Loading
             try {
-                val dive = FitDecoder.decode(fileBytes)
+                val dive = withContext(Dispatchers.Default) {
+                    if (!FitDecoder.isValidFitFile(fileBytes)) {
+                        throw FitParseException("Not a valid FIT file")
+                    }
+                    FitDecoder.decode(fileBytes)
+                }
                 screen = Screen.Import(dive)
             } catch (e: FitParseException) {
-                screen = Screen.Error("Failed to parse dive data: ${e.message}")
+                screen = Screen.Error(
+                    title = "Invalid dive file",
+                    message = e.message ?: "The file could not be parsed as a FIT dive log. Make sure you're sharing from the Garmin Dive app.",
+                )
             } catch (e: Exception) {
-                screen = Screen.Error("Unexpected error: ${e.message}")
+                screen = Screen.Error(
+                    title = "Something went wrong",
+                    message = "An unexpected error occurred while reading the file. Please try again.",
+                )
             }
         }
     }
@@ -67,8 +81,16 @@ fun App(
     val storedDives = remember(storeVersion) { diveStore.getAll() }
 
     MaterialTheme(colorScheme = colorScheme ?: MaterialTheme.colorScheme) {
-        Box(modifier = Modifier.fillMaxSize()) {
-        when (val s = screen) {
+        Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
+        AnimatedContent(
+            targetState = screen,
+            transitionSpec = {
+                fadeIn(animationSpec = tween(150)) togetherWith
+                        fadeOut(animationSpec = tween(150))
+            },
+            label = "screen",
+        ) { currentScreen ->
+        when (currentScreen) {
             is Screen.Home -> HomeScreenNew(
                 dives = storedDives,
                 bleCutoffDate = settings.getBleCutoffDate(),
@@ -79,6 +101,7 @@ fun App(
                 } else null,
                 onDiveTap = { stored -> screen = Screen.DiveDetail(stored) },
             )
+            is Screen.Loading -> LoadingScreen()
             is Screen.Settings -> SettingsScreen(
                 initialUserInfo = settings.getUserInfo(),
                 initialBleCutoff = settings.getBleCutoffDate(),
@@ -89,16 +112,16 @@ fun App(
             is Screen.Import -> {
                 val lastParams = settings.getLastDiveParams()
                 val paramsWithSport = lastParams.copy(
-                    diveType = s.dive.sport.toSsiDiveType(),
+                    diveType = currentScreen.dive.sport.toSsiDiveType(),
                 )
                 ImportScreen(
-                    dive = s.dive,
+                    dive = currentScreen.dive,
                     initialParams = paramsWithSport,
                     recentSiteIds = settings.getRecentSiteIds(),
                     onSave = { params ->
                         settings.saveLastDiveParams(params)
                         params.siteId?.let { settings.addRecentSiteId(it) }
-                        diveStore.add(s.dive, "garmin-fit")
+                        diveStore.add(currentScreen.dive, "garmin-fit")
                         storeVersion++
                         screen = Screen.Home
                         scope.launch { snackbarHostState.showSnackbar("Dive saved") }
@@ -108,31 +131,30 @@ fun App(
             }
             is Screen.DiveDetail -> {
                 DiveDetailScreen(
-                    storedDive = s.storedDive,
+                    storedDive = currentScreen.storedDive,
                     onGenerateQr = {
                         val userInfo = settings.getUserInfo()
                         val lastParams = settings.getLastDiveParams()
                         val params = lastParams.copy(
-                            diveType = s.storedDive.dive.sport.toSsiDiveType(),
+                            diveType = currentScreen.storedDive.dive.sport.toSsiDiveType(),
                         )
-                        val payload = SsiPayloadBuilder.build(s.storedDive.dive, userInfo, params)
+                        val payload = SsiPayloadBuilder.build(currentScreen.storedDive.dive, userInfo, params)
                         settings.addDiveHistoryEntry(DiveHistoryEntry(
-                            dateTime = s.storedDive.dive.dateTime,
-                            maxDepthMeters = s.storedDive.dive.maxDepthMeters,
-                            diveTimeMinutes = s.storedDive.dive.diveTimeMinutes,
+                            dateTime = currentScreen.storedDive.dive.dateTime,
+                            maxDepthMeters = currentScreen.storedDive.dive.maxDepthMeters,
+                            diveTimeMinutes = currentScreen.storedDive.dive.diveTimeMinutes,
                             payload = payload,
                             timestamp = Clock.System.now().toEpochMilliseconds(),
                         ))
-                        screen = Screen.QrCode(payload, s.storedDive.dive)
+                        screen = Screen.QrCode(payload, currentScreen.storedDive.dive)
                     },
                     onToggleBleHidden = { hidden ->
-                        diveStore.setBleHidden(s.storedDive.id, hidden)
+                        diveStore.setBleHidden(currentScreen.storedDive.id, hidden)
                         storeVersion++
-                        // Update the screen with the new state
-                        screen = Screen.DiveDetail(s.storedDive.copy(bleHidden = hidden))
+                        screen = Screen.DiveDetail(currentScreen.storedDive.copy(bleHidden = hidden))
                     },
                     onDelete = {
-                        diveStore.remove(s.storedDive.id)
+                        diveStore.remove(currentScreen.storedDive.id)
                         storeVersion++
                         screen = Screen.Home
                     },
@@ -140,12 +162,10 @@ fun App(
                 )
             }
             is Screen.QrCode -> QrCodeScreen(
-                payload = s.payload,
+                payload = currentScreen.payload,
                 onSetBrightness = onSetBrightness,
                 onShare = onShareQr,
-                onBack = {
-                    screen = Screen.Home
-                },
+                onBack = { screen = Screen.Home },
             )
             is Screen.BleEmulator -> {
                 val cutoff = settings.getBleCutoffDate()
@@ -161,9 +181,11 @@ fun App(
                 }
             }
             is Screen.Error -> ErrorScreen(
-                message = s.message,
+                title = currentScreen.title,
+                message = currentScreen.message,
                 onBack = { screen = Screen.Home },
             )
+        }
         }
         SnackbarHost(
             hostState = snackbarHostState,
