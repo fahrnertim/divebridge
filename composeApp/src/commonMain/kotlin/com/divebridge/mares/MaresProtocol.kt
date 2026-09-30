@@ -7,13 +7,20 @@ import com.divebridge.dive.Dive
  * Translates incoming commands into responses as if we were a Mares dive computer.
  */
 class MaresProtocol(
-    private val dive: Dive,
+    private val dives: List<Dive>,
     val model: MaresModel = DEFAULT_MODEL,
     private val serialNumber: String = "000001",
 ) {
-    private val diveHeader: ByteArray by lazy { MaresEncoder.encodeHeader(dive, model) }
-    private val diveProfile: ByteArray by lazy {
-        MaresEncoder.encodeProfile(dive, hasTankData = model.hasAirIntegration && dive.tank != null)
+    constructor(dive: Dive, model: MaresModel = DEFAULT_MODEL, serialNumber: String = "000001")
+        : this(listOf(dive), model, serialNumber)
+
+    private val diveHeaders: Map<Int, ByteArray> by lazy {
+        dives.mapIndexed { i, dive -> i to MaresEncoder.encodeHeader(dive, model) }.toMap()
+    }
+    private val diveProfiles: Map<Int, ByteArray> by lazy {
+        dives.mapIndexed { i, dive ->
+            i to MaresEncoder.encodeProfile(dive, hasTankData = model.hasAirIntegration && dive.tank != null)
+        }.toMap()
     }
 
     companion object {
@@ -99,14 +106,16 @@ class MaresProtocol(
                 serialNumber.padStart(6, '0').take(6).toByteArray()
             }
             index == OBJ_DIVE_COUNT && subIndex == SUB_COUNT -> {
-                // 2-byte LE count: always 1 dive
-                byteArrayOf(1, 0)
+                // 2-byte LE dive count
+                byteArrayOf((dives.size and 0xFF).toByte(), ((dives.size shr 8) and 0xFF).toByte())
             }
             index >= OBJ_DIVE_BASE && subIndex == SUB_HEADER -> {
-                diveHeader
+                val diveIndex = index - OBJ_DIVE_BASE
+                diveHeaders[diveIndex] ?: ByteArray(0)
             }
             index >= OBJ_DIVE_BASE && subIndex == SUB_PROFILE -> {
-                diveProfile
+                val diveIndex = index - OBJ_DIVE_BASE
+                diveProfiles[diveIndex] ?: ByteArray(0)
             }
             // 0x2000/0x08: hardware version
             index == OBJ_DEVICE_INFO && subIndex == 0x08 -> {

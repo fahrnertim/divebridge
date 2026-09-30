@@ -18,7 +18,7 @@ sealed class Screen {
     data object History : Screen()
     data class DiveReview(val dive: Dive) : Screen()
     data class QrCode(val payload: String, val dive: Dive?) : Screen()
-    data class BleEmulation(val dive: Dive) : Screen()
+    data class BleEmulation(val dives: List<Dive>) : Screen()
     data class Error(val message: String) : Screen()
 }
 
@@ -28,7 +28,8 @@ fun App(
     onPickFile: () -> Unit,
     onSetBrightness: (Float) -> Unit,
     onShareQr: (String) -> Unit,
-    bleContent: (@Composable (Dive, () -> Unit) -> Unit)? = null,
+    diveStore: com.divebridge.dive.DiveStore? = null,
+    bleContent: (@Composable (List<Dive>, () -> Unit) -> Unit)? = null,
     fileBytes: ByteArray?,
 ) {
     var screen by remember { mutableStateOf<Screen>(Screen.Home) }
@@ -44,6 +45,7 @@ fun App(
             try {
                 val dive = FitDecoder.decode(fileBytes)
                 pendingDive = dive
+                diveStore?.add(dive, "garmin-fit")
                 screen = Screen.DiveReview(dive)
             } catch (e: FitParseException) {
                 screen = Screen.Error("Failed to parse dive data: ${e.message}")
@@ -98,7 +100,12 @@ fun App(
                         screen = Screen.QrCode(payload, s.dive)
                     },
                     onBleTransfer = if (bleContent != null && s.dive.profile != null) {
-                        { screen = Screen.BleEmulation(s.dive) }
+                        {
+                            val allDives = diveStore?.getAll()?.map { it.dive }
+                                ?.filter { it.profile != null }
+                                ?: listOf(s.dive)
+                            screen = Screen.BleEmulation(allDives)
+                        }
                     } else null,
                     onBack = { screen = Screen.Home },
                 )
@@ -113,8 +120,9 @@ fun App(
                 },
             )
             is Screen.BleEmulation -> {
-                bleContent?.invoke(s.dive) {
-                    screen = Screen.DiveReview(s.dive)
+                bleContent?.invoke(s.dives) {
+                    val dive = pendingDive
+                    screen = if (dive != null) Screen.DiveReview(dive) else Screen.Home
                 }
             }
             is Screen.Error -> ErrorScreen(

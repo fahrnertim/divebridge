@@ -28,6 +28,7 @@ import java.io.File
 class MainActivity : ComponentActivity() {
 
     private lateinit var settings: AndroidSettings
+    private lateinit var diveStore: com.divebridge.dive.AndroidDiveStore
     private var fileBytes by mutableStateOf<ByteArray?>(null)
     private var savedBrightness = -1f
 
@@ -37,7 +38,7 @@ class MainActivity : ComponentActivity() {
     private var bleProgress by mutableStateOf(0f)
     private var bleProgressText by mutableStateOf("")
     private val bleLogs = mutableStateListOf<String>()
-    private var pendingBleDive: Dive? = null
+    private var pendingBleDives: List<Dive>? = null
 
     private val filePickerLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -51,13 +52,14 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestMultiplePermissions()
     ) { results ->
         if (results.values.all { it }) {
-            pendingBleDive?.let { startBle(it) }
+            pendingBleDives?.let { startBle(it) }
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         settings = AndroidSettings(applicationContext)
+        diveStore = com.divebridge.dive.AndroidDiveStore(applicationContext)
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
@@ -85,19 +87,20 @@ class MainActivity : ComponentActivity() {
         setContent {
             App(
                 settings = settings,
+                diveStore = diveStore,
                 onPickFile = {
                     filePickerLauncher.launch(arrayOf("*/*"))
                 },
                 onSetBrightness = { brightness -> setBrightness(brightness) },
                 onShareQr = { payload -> shareQrCode(payload) },
-                bleContent = { dive, onBack ->
+                bleContent = { dives, onBack ->
                     BleEmulationScreen(
                         isRunning = bleRunning,
                         status = bleStatus,
                         progress = bleProgress,
                         progressText = bleProgressText,
                         logs = bleLogs,
-                        onStart = { requestBleStart(dive) },
+                        onStart = { requestBleStart(dives) },
                         onStop = { stopBle() },
                         onBack = onBack,
                     )
@@ -107,7 +110,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun requestBleStart(dive: Dive) {
+    private fun requestBleStart(dives: List<Dive>) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val needed = listOf(
                 Manifest.permission.BLUETOOTH_ADVERTISE,
@@ -116,15 +119,15 @@ class MainActivity : ComponentActivity() {
                 ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
             }
             if (needed.isNotEmpty()) {
-                pendingBleDive = dive
+                pendingBleDives = dives
                 blePermissionLauncher.launch(needed.toTypedArray())
                 return
             }
         }
-        startBle(dive)
+        startBle(dives)
     }
 
-    private fun startBle(dive: Dive) {
+    private fun startBle(dives: List<Dive>) {
         bleLogs.clear()
         bleStatus = MaresBleService.BleStatus.IDLE
         bleProgress = 0f
@@ -138,7 +141,7 @@ class MainActivity : ComponentActivity() {
                 bleProgress = if (total > 0) transferred.toFloat() / total else 0f
                 bleProgressText = "${transferred / 1024}/${total / 1024} KB"
             }
-            start(dive)
+            start(dives)
         }
     }
 
