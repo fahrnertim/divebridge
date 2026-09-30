@@ -44,7 +44,7 @@ class MaresProtocol(
     private var pendingOffset: Int = 0
     private var packetCounter: Int = 0
 
-    /** Max data bytes per OBJ_EVEN/ODD response. Set based on BLE MTU. */
+    /** Max data bytes per OBJ_EVEN/ODD response. */
     var maxDataChunkSize: Int = 511
 
     /**

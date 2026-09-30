@@ -431,10 +431,7 @@ class MaresBleService(
         override fun onMtuChanged(device: BluetoothDevice?, mtu: Int) {
             if (connectedDevice == null || device?.address == connectedDevice?.address) {
                 currentMtu = mtu
-                // Set protocol chunk size to fit in single notification:
-                // notification = [AA] [toggle + data] [EA] = data + 3
-                // notification must fit in MTU - 3 (ATT overhead)
-                // so data = MTU - 3 - 3 = MTU - 6, minus 1 for toggle = MTU - 7
+                // Match chunk size to MTU so each response fits in one notification
                 val chunkSize = (mtu - 7).coerceIn(20, 511)
                 protocol?.maxDataChunkSize = chunkSize
                 log("MTU changed: $mtu (chunk size: $chunkSize)")
