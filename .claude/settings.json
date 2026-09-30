@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Write",
+      "Edit",
+      "Glob",
+      "Grep",
+      "WebFetch",
+      "WebSearch",
+      "Agent",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git branch*)",
+      "Bash(git show*)",
+      "Bash(git stash list*)",
+      "Bash(gradle*)",
+      "Bash(gradlew*)",
+      "Bash(./gradlew*)",
+      "Bash(adb *)",
+      "Bash(ls *)",
+      "Bash(mkdir *)",
+      "Bash(java -version*)",
+      "Bash(kotlin -version*)"
+    ],
+    "deny": []
+  }
+}
