@@ -7,6 +7,7 @@ import com.divebridge.fit.FitDecoder
 import com.divebridge.fit.FitParseException
 import com.divebridge.settings.Settings
 import com.divebridge.ssi.SsiPayloadBuilder
+import com.divebridge.ssi.toSsiDiveType
 import com.divebridge.ui.*
 
 sealed class Screen {
@@ -22,6 +23,7 @@ fun App(
     settings: Settings,
     onPickFile: () -> Unit,
     onSetBrightness: (Float) -> Unit,
+    onShareImage: ((String) -> Unit)? = null,
     fileBytes: ByteArray?,
 ) {
     var screen by remember { mutableStateOf<Screen>(Screen.Home) }
@@ -57,17 +59,25 @@ fun App(
                 onSave = { settings.saveUserInfo(it) },
                 onBack = { screen = Screen.Home },
             )
-            is Screen.DiveReview -> DiveReviewScreen(
-                dive = s.dive,
-                initialParams = settings.getLastDiveParams(),
-                onGenerate = { params ->
-                    settings.saveLastDiveParams(params)
-                    val userInfo = settings.getUserInfo()
-                    val payload = SsiPayloadBuilder.build(s.dive, userInfo, params)
-                    screen = Screen.QrCode(payload)
-                },
-                onBack = { screen = Screen.Home },
-            )
+            is Screen.DiveReview -> {
+                val lastParams = settings.getLastDiveParams()
+                val paramsWithSport = lastParams.copy(
+                    diveType = s.dive.sport.toSsiDiveType(),
+                )
+                DiveReviewScreen(
+                    dive = s.dive,
+                    initialParams = paramsWithSport,
+                    recentSiteIds = settings.getRecentSiteIds(),
+                    onGenerate = { params ->
+                        settings.saveLastDiveParams(params)
+                        params.siteId?.let { settings.addRecentSiteId(it) }
+                        val userInfo = settings.getUserInfo()
+                        val payload = SsiPayloadBuilder.build(s.dive, userInfo, params)
+                        screen = Screen.QrCode(payload)
+                    },
+                    onBack = { screen = Screen.Home },
+                )
+            }
             is Screen.QrCode -> QrCodeScreen(
                 payload = s.payload,
                 onSetBrightness = onSetBrightness,

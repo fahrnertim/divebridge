@@ -8,4 +8,6 @@ interface Settings {
     fun saveUserInfo(info: SsiUserInfo)
     fun getLastDiveParams(): SsiDiveParams
     fun saveLastDiveParams(params: SsiDiveParams)
+    fun getRecentSiteIds(): List<String>
+    fun addRecentSiteId(siteId: String)
 }

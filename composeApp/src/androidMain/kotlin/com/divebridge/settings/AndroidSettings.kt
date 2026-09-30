@@ -47,4 +47,18 @@ class AndroidSettings(context: Context) : Settings {
             apply()
         }
     }
+
+    override fun getRecentSiteIds(): List<String> {
+        val csv = prefs.getString("recent_site_ids", null) ?: return emptyList()
+        return csv.split(",").filter { it.isNotEmpty() }
+    }
+
+    override fun addRecentSiteId(siteId: String) {
+        if (siteId.isEmpty()) return
+        val existing = getRecentSiteIds().toMutableList()
+        existing.remove(siteId)
+        existing.add(0, siteId)
+        val trimmed = existing.take(10)
+        prefs.edit().putString("recent_site_ids", trimmed.joinToString(",")).apply()
+    }
 }

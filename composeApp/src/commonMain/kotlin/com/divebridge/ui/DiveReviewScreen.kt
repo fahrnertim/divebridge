@@ -11,14 +11,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.divebridge.dive.Dive
+import com.divebridge.dive.DiveSport
 import com.divebridge.ssi.*
 import kotlin.math.roundToInt
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun DiveReviewScreen(
     dive: Dive,
     initialParams: SsiDiveParams,
+    recentSiteIds: List<String>,
     onGenerate: (SsiDiveParams) -> Unit,
     onBack: () -> Unit,
 ) {
@@ -65,6 +67,21 @@ fun DiveReviewScreen(
                 modifier = Modifier.fillMaxWidth(),
             )
 
+            if (recentSiteIds.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text("Recent sites", style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(modifier = Modifier.height(4.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    recentSiteIds.forEach { id ->
+                        AssistChip(
+                            onClick = { siteId = id },
+                            label = { Text(id) },
+                        )
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(12.dp))
 
             // Water type dropdown
@@ -96,6 +113,7 @@ fun DiveReviewScreen(
             Button(
                 onClick = {
                     val params = SsiDiveParams(
+                        diveType = dive.sport.toSsiDiveType(),
                         siteId = siteId.ifEmpty { null },
                         waterTypeId = selectedWaterType,
                         diveSubTypeId = selectedDiveSubType,
@@ -121,8 +139,18 @@ private fun DiveInfoCard(dive: Dive) {
             InfoRow("Max depth", "%.1f m".format(dive.maxDepthMeters))
             InfoRow("Bottom time", formatDiveTime(dive.diveTimeMinutes))
             InfoRow("Water temp", "${dive.minWaterTempCelsius.roundToInt()} - ${dive.maxWaterTempCelsius.roundToInt()} C")
+            InfoRow("Sport", dive.sport.displayName())
         }
     }
+}
+
+private fun DiveSport.displayName(): String = when (this) {
+    DiveSport.SCUBA -> "Scuba"
+    DiveSport.FREEDIVING -> "Freediving"
+    DiveSport.EXTENDED_RANGE -> "Extended Range"
+    DiveSport.REBREATHER_SCR -> "Rebreather (SCR)"
+    DiveSport.REBREATHER_CCR -> "Rebreather (CCR)"
+    DiveSport.UNKNOWN -> "Unknown"
 }
 
 @Composable

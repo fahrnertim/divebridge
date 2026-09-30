@@ -1,6 +1,7 @@
 package com.divebridge.fit
 
 import com.divebridge.dive.Dive
+import com.divebridge.dive.DiveSport
 import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
@@ -37,6 +38,7 @@ object FitDecoder {
 
         var sessionTimestamp: Long? = null
         var sessionSport: Int? = null
+        var sessionSubSport: Int? = null
         var sessionMinTemp: Int? = null
         var sessionMaxTemp: Int? = null
         var activityTimestamp: Long? = null
@@ -79,6 +81,7 @@ object FitDecoder {
                                 253 -> if (field.size == 4) sessionTimestamp = readUInt32(data, fo)
                                 // field 0 = event (uint8), field 1 = event_type (uint8)
                                 5 -> if (field.size == 1) sessionSport = data[fo].toInt() and 0xFF
+                                6 -> if (field.size == 1) sessionSubSport = data[fo].toInt() and 0xFF
                                 // field 58 = max_temperature (sint8, Celsius)
                                 58 -> if (field.size == 1) sessionMaxTemp = data[fo].toInt()
                                 // field 150 = min_temperature (sint8, Celsius)
@@ -152,6 +155,7 @@ object FitDecoder {
                 ?: throw FitParseException("No min temperature found"),
             maxWaterTempCelsius = sessionMaxTemp?.toDouble()
                 ?: throw FitParseException("No max temperature found"),
+            sport = mapSport(sessionSport, sessionSubSport),
         )
     }
 
@@ -243,6 +247,27 @@ object FitDecoder {
     }
 
     private const val UINT32_INVALID = 0xFFFFFFFFL
+
+    // FIT sport enum values
+    private const val FIT_SPORT_DIVING = 53
+
+    // FIT sub_sport enum values
+    private const val FIT_SUB_SPORT_SINGLE_GAS_DIVING = 57
+    private const val FIT_SUB_SPORT_MULTI_GAS_DIVING = 58
+    private const val FIT_SUB_SPORT_GAUGE_DIVING = 59
+    private const val FIT_SUB_SPORT_APNEA_DIVING = 62
+    private const val FIT_SUB_SPORT_CCR_DIVING = 74
+
+    private fun mapSport(sport: Int?, subSport: Int?): DiveSport {
+        if (sport != FIT_SPORT_DIVING) return DiveSport.UNKNOWN
+        return when (subSport) {
+            FIT_SUB_SPORT_APNEA_DIVING -> DiveSport.FREEDIVING
+            FIT_SUB_SPORT_CCR_DIVING -> DiveSport.REBREATHER_CCR
+            FIT_SUB_SPORT_MULTI_GAS_DIVING -> DiveSport.EXTENDED_RANGE
+            FIT_SUB_SPORT_SINGLE_GAS_DIVING, FIT_SUB_SPORT_GAUGE_DIVING -> DiveSport.SCUBA
+            else -> DiveSport.SCUBA
+        }
+    }
 }
 
 data class FieldDefinition(
