@@ -6,6 +6,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.BluetoothDisabled
+import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,6 +36,18 @@ fun DiveDetailScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = onGenerateQr) {
+                        Icon(Icons.Filled.QrCode, contentDescription = "Generate QR Code")
+                    }
+                    IconButton(onClick = { onToggleBleHidden(!storedDive.bleHidden) }) {
+                        Icon(
+                            imageVector = if (storedDive.bleHidden) Icons.Filled.BluetoothDisabled else Icons.Filled.Bluetooth,
+                            contentDescription = if (storedDive.bleHidden) "Hidden from BLE" else "Included in BLE",
+                            tint = if (storedDive.bleHidden) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.primary,
+                        )
                     }
                 },
             )
@@ -82,43 +97,6 @@ fun DiveDetailScreen(
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // QR Code action
-            Button(
-                onClick = onGenerateQr,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Generate QR Code")
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // BLE visibility
-            Text("Bluetooth", style = MaterialTheme.typography.titleMedium)
-            Spacer(modifier = Modifier.height(8.dp))
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Row(
-                    modifier = Modifier.padding(16.dp).fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Exclude from BLE emulator", style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            text = if (storedDive.bleHidden) "This dive won't be sent via Bluetooth"
-                                   else "This dive will be included in BLE transfers",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Switch(
-                        checked = storedDive.bleHidden,
-                        onCheckedChange = onToggleBleHidden,
-                    )
                 }
             }
 
