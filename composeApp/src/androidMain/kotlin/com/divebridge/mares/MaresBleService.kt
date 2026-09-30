@@ -43,12 +43,16 @@ class MaresBleService(
     private var isAdvertising = false
     private var pendingServices = mutableListOf<BluetoothGattService>()
     private var pendingCmd: Byte? = null // buffered command waiting for payload
+    private var savedAdapterName: String? = null
+
+    private val ioThread = java.util.concurrent.Executors.newSingleThreadExecutor()
 
     var onStateChanged: ((Boolean) -> Unit)? = null
     var onLog: ((String) -> Unit)? = null
 
     fun start(dive: Dive) {
         protocol = MaresProtocol(dive)
+        pendingCmd = null
 
         val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         val adapter = bluetoothManager.adapter
@@ -74,6 +78,12 @@ class MaresBleService(
         protocol = null
         connectedDevice = null
         isAdvertising = false
+        // Restore original adapter name
+        savedAdapterName?.let {
+            val bm = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+            bm.adapter?.name = it
+            savedAdapterName = null
+        }
         onStateChanged?.invoke(false)
         log("Stopped")
     }
@@ -149,6 +159,7 @@ class MaresBleService(
     }
 
     private fun startAdvertising(adapter: BluetoothAdapter) {
+        savedAdapterName = adapter.name
         adapter.name = "Puck4"
 
         val settings = AdvertiseSettings.Builder()
@@ -169,6 +180,58 @@ class MaresBleService(
         val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         val adapter = bluetoothManager.adapter
         adapter?.bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
+    }
+
+    private fun handleProtocolWrite(value: ByteArray) {
+        val proto = protocol ?: return
+
+        // Check if this is a payload for a previously received command
+        if (pendingCmd != null) {
+            val cmd = pendingCmd!!
+            pendingCmd = null
+            log("  -> CMD 0x${"%02X".format(cmd)} + payload ${value.size}b")
+            val response = proto.handleCommand(cmd, value)
+            if (response.isNotEmpty()) {
+                log("  <- RSP ${response.size}b (after args)")
+                // After args, send response + END (no ACK prefix)
+                val framed = ByteArray(response.size + 1)
+                response.copyInto(framed, 0)
+                framed[framed.size - 1] = MaresProtocol.END
+                sendRaw(framed)
+            }
+            return
+        }
+
+        // Must be a command (2 bytes: cmd, cmd^0xA5)
+        if (value.size >= 2) {
+            val cmd = value[0]
+            val check = value[1]
+            if ((cmd.toInt() xor 0xA5).toByte() != check) {
+                log("  -> invalid check byte, expected ${"%02X".format((cmd.toInt() xor 0xA5) and 0xFF)}")
+                return
+            }
+
+            // Commands that expect a follow-up payload
+            val needsPayload = cmd == MaresProtocol.CMD_OBJ_INIT ||
+                    cmd == MaresProtocol.CMD_READ ||
+                    cmd == MaresProtocol.CMD_SET_TIME
+
+            if (needsPayload && value.size == 2) {
+                pendingCmd = cmd
+                log("  -> CMD 0x${"%02X".format(cmd)} (waiting for payload)")
+                sendAck()
+                return
+            }
+
+            val payload = if (value.size > 2) value.copyOfRange(2, value.size) else ByteArray(0)
+            log("  -> CMD 0x${"%02X".format(cmd)} payload=${payload.size}b")
+
+            val response = proto.handleCommand(cmd, payload)
+            if (response.isNotEmpty()) {
+                log("  <- RSP ${response.size}b")
+                sendResponse(response)
+            }
+        }
     }
 
     private fun sendAck() {
@@ -197,8 +260,16 @@ class MaresBleService(
             val end = (offset + maxChunk).coerceAtMost(data.size)
             val chunk = data.copyOfRange(offset, end)
             char.value = chunk
-            gattServer?.notifyCharacteristicChanged(device, char, false)
+            val sent = gattServer?.notifyCharacteristicChanged(device, char, false) ?: false
+            if (!sent) {
+                log("notifyCharacteristicChanged failed at offset $offset")
+                return
+            }
             offset = end
+            // Pace notifications: wait for BLE stack to process
+            if (offset < data.size) {
+                Thread.sleep(10)
+            }
         }
     }
 
@@ -225,9 +296,17 @@ class MaresBleService(
             if (newState == BluetoothProfile.STATE_CONNECTED) {
                 connectedDevice = device
                 log("Device connected: ${device.address}")
+                // Stop advertising to prevent duplicate Puck4 entries
+                stopAdvertising()
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                connectedDevice = null
-                log("Device disconnected")
+                if (device.address == connectedDevice?.address) {
+                    connectedDevice = null
+                    pendingCmd = null
+                    log("Device disconnected, restarting advertising")
+                    // Resume advertising for next connection
+                    val bm = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+                    bm.adapter?.let { startAdvertising(it) }
+                }
             }
         }
 
@@ -263,57 +342,8 @@ class MaresBleService(
             }
 
             if (characteristic.uuid == WRITE_CHAR_UUID) {
-                val proto = protocol ?: return
-
-                // Check if this is a payload for a previously received command
-                if (pendingCmd != null) {
-                    val cmd = pendingCmd!!
-                    pendingCmd = null
-                    log("  -> CMD 0x${"%02X".format(cmd)} + payload ${value.size}b")
-                    val response = proto.handleCommand(cmd, value)
-                    if (response.isNotEmpty()) {
-                        log("  <- RSP ${response.size}b (after args)")
-                        // After args, send response + END (no ACK prefix)
-                        val framed = ByteArray(response.size + 1)
-                        response.copyInto(framed, 0)
-                        framed[framed.size - 1] = MaresProtocol.END
-                        sendRaw(framed)
-                    }
-                    return
-                }
-
-                // Must be a command (2 bytes: cmd, cmd^0xA5)
-                if (value.size >= 2) {
-                    val cmd = value[0]
-                    val check = value[1]
-                    if ((cmd.toInt() xor 0xA5).toByte() != check) {
-                        log("  -> invalid check byte, expected ${"%02X".format((cmd.toInt() xor 0xA5) and 0xFF)}")
-                        return
-                    }
-
-                    // Commands that expect a follow-up payload
-                    val needsPayload = cmd == MaresProtocol.CMD_OBJ_INIT ||
-                            cmd == MaresProtocol.CMD_READ ||
-                            cmd == MaresProtocol.CMD_SET_TIME
-
-                    if (needsPayload && value.size == 2) {
-                        // Payload will arrive in the next write
-                        pendingCmd = cmd
-                        log("  -> CMD 0x${"%02X".format(cmd)} (waiting for payload)")
-                        // Send ACK to acknowledge command receipt
-                        sendAck()
-                        return
-                    }
-
-                    val payload = if (value.size > 2) value.copyOfRange(2, value.size) else ByteArray(0)
-                    log("  -> CMD 0x${"%02X".format(cmd)} payload=${payload.size}b")
-
-                    val response = proto.handleCommand(cmd, payload)
-                    if (response.isNotEmpty()) {
-                        log("  <- RSP ${response.size}b")
-                        sendResponse(response)
-                    }
-                }
+                val valueCopy = value.copyOf()
+                ioThread.execute { handleProtocolWrite(valueCopy) }
             }
         }
 
