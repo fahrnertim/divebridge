@@ -1,5 +1,6 @@
 package com.divebridge.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -12,6 +13,7 @@ fun ErrorScreen(
     message: String,
     onBack: () -> Unit,
 ) {
+    BackHandler(onBack = onBack)
     Column(
         modifier = Modifier
             .fillMaxSize()

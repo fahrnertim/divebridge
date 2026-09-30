@@ -1,5 +1,6 @@
 package com.divebridge.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -18,6 +19,7 @@ fun SettingsScreen(
     onSave: (SsiUserInfo) -> Unit,
     onBack: () -> Unit,
 ) {
+    BackHandler(onBack = onBack)
     var firstName by remember { mutableStateOf(initialUserInfo.firstName) }
     var lastName by remember { mutableStateOf(initialUserInfo.lastName) }
     var masterId by remember { mutableStateOf(initialUserInfo.masterId) }

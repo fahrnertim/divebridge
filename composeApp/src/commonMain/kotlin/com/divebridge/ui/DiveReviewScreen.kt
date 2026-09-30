@@ -1,5 +1,6 @@
 package com.divebridge.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -21,6 +22,7 @@ fun DiveReviewScreen(
     onGenerate: (SsiDiveParams) -> Unit,
     onBack: () -> Unit,
 ) {
+    BackHandler(onBack = onBack)
     var siteId by remember { mutableStateOf(initialParams.siteId ?: "") }
     var selectedWaterType by remember { mutableStateOf(initialParams.waterTypeId) }
     var selectedDiveSubType by remember { mutableStateOf(initialParams.diveSubTypeId) }

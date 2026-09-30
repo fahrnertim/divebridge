@@ -6,7 +6,6 @@ import com.divebridge.dive.Dive
 import com.divebridge.fit.FitDecoder
 import com.divebridge.fit.FitParseException
 import com.divebridge.settings.Settings
-import com.divebridge.ssi.SsiDiveParams
 import com.divebridge.ssi.SsiPayloadBuilder
 import com.divebridge.ui.*
 
@@ -22,20 +21,25 @@ sealed class Screen {
 fun App(
     settings: Settings,
     onPickFile: () -> Unit,
+    onSetBrightness: (Float) -> Unit,
     fileBytes: ByteArray?,
 ) {
     var screen by remember { mutableStateOf<Screen>(Screen.Home) }
     var pendingDive by remember { mutableStateOf<Dive?>(null) }
 
-    // When new file bytes arrive, parse and navigate
+    // When new file bytes arrive, validate and parse
     LaunchedEffect(fileBytes) {
         if (fileBytes != null) {
+            if (!FitDecoder.isValidFitFile(fileBytes)) {
+                screen = Screen.Error("Not a valid FIT file. Please select a .fit file exported from a dive computer.")
+                return@LaunchedEffect
+            }
             try {
                 val dive = FitDecoder.decode(fileBytes)
                 pendingDive = dive
                 screen = Screen.DiveReview(dive)
             } catch (e: FitParseException) {
-                screen = Screen.Error("Failed to parse FIT file: ${e.message}")
+                screen = Screen.Error("Failed to parse dive data: ${e.message}")
             } catch (e: Exception) {
                 screen = Screen.Error("Unexpected error: ${e.message}")
             }
@@ -66,6 +70,7 @@ fun App(
             )
             is Screen.QrCode -> QrCodeScreen(
                 payload = s.payload,
+                onSetBrightness = onSetBrightness,
                 onBack = {
                     val dive = pendingDive
                     screen = if (dive != null) Screen.DiveReview(dive) else Screen.Home

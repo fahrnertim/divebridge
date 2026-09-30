@@ -16,6 +16,7 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var settings: AndroidSettings
     private var fileBytes by mutableStateOf<ByteArray?>(null)
+    private var savedBrightness = -1f
 
     private val filePickerLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -29,7 +30,6 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         settings = AndroidSettings(applicationContext)
 
-        // Keep screen bright for QR scanning
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         handleIntent(intent)
@@ -54,9 +54,22 @@ class MainActivity : ComponentActivity() {
                 onPickFile = {
                     filePickerLauncher.launch(arrayOf("*/*"))
                 },
+                onSetBrightness = { brightness -> setBrightness(brightness) },
                 fileBytes = fileBytes,
             )
         }
+    }
+
+    private fun setBrightness(brightness: Float) {
+        val lp = window.attributes
+        if (brightness < 0) {
+            // Restore previous brightness
+            lp.screenBrightness = savedBrightness
+        } else {
+            savedBrightness = lp.screenBrightness
+            lp.screenBrightness = brightness
+        }
+        window.attributes = lp
     }
 
     private fun extractFitUri(intent: Intent?): Uri? {
