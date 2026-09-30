@@ -21,7 +21,9 @@ fun DiveReviewScreen(
     dive: Dive,
     initialParams: SsiDiveParams,
     recentSiteIds: List<String>,
+    hasBle: Boolean = false,
     onGenerate: (SsiDiveParams) -> Unit,
+    onBleTransfer: (() -> Unit)? = null,
     onBack: () -> Unit,
 ) {
     BackHandler(onBack = onBack)
@@ -123,6 +125,16 @@ fun DiveReviewScreen(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text("Generate QR Code")
+            }
+
+            if (hasBle && onBleTransfer != null) {
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedButton(
+                    onClick = onBleTransfer,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Send via Bluetooth (experimental)")
+                }
             }
         }
     }

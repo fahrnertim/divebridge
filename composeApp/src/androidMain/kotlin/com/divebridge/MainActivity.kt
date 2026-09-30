@@ -1,18 +1,26 @@
 package com.divebridge
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import com.divebridge.dive.Dive
+import com.divebridge.mares.MaresBleService
 import com.divebridge.settings.AndroidSettings
+import com.divebridge.ui.BleEmulationScreen
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
 import java.io.File
@@ -23,11 +31,24 @@ class MainActivity : ComponentActivity() {
     private var fileBytes by mutableStateOf<ByteArray?>(null)
     private var savedBrightness = -1f
 
+    private var bleService: MaresBleService? = null
+    private var bleRunning by mutableStateOf(false)
+    private val bleLogs = mutableStateListOf<String>()
+    private var pendingBleDive: Dive? = null
+
     private val filePickerLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri ->
         if (uri != null) {
             fileBytes = readFileBytes(uri)
+        }
+    }
+
+    private val blePermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        if (results.values.all { it }) {
+            pendingBleDive?.let { startBle(it) }
         }
     }
 
@@ -47,6 +68,11 @@ class MainActivity : ComponentActivity() {
         handleIntent(intent)
     }
 
+    override fun onDestroy() {
+        bleService?.stop()
+        super.onDestroy()
+    }
+
     private fun handleIntent(intent: Intent?) {
         val uri = extractFitUri(intent) ?: return
         fileBytes = readFileBytes(uri)
@@ -61,9 +87,50 @@ class MainActivity : ComponentActivity() {
                 },
                 onSetBrightness = { brightness -> setBrightness(brightness) },
                 onShareQr = { payload -> shareQrCode(payload) },
+                bleContent = { dive, onBack ->
+                    BleEmulationScreen(
+                        isRunning = bleRunning,
+                        logs = bleLogs,
+                        onStart = { requestBleStart(dive) },
+                        onStop = { stopBle() },
+                        onBack = onBack,
+                    )
+                },
                 fileBytes = fileBytes,
             )
         }
+    }
+
+    private fun requestBleStart(dive: Dive) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val needed = listOf(
+                Manifest.permission.BLUETOOTH_ADVERTISE,
+                Manifest.permission.BLUETOOTH_CONNECT,
+            ).filter {
+                ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+            }
+            if (needed.isNotEmpty()) {
+                pendingBleDive = dive
+                blePermissionLauncher.launch(needed.toTypedArray())
+                return
+            }
+        }
+        startBle(dive)
+    }
+
+    private fun startBle(dive: Dive) {
+        bleLogs.clear()
+        bleService?.stop()
+        bleService = MaresBleService(applicationContext).apply {
+            onStateChanged = { running -> bleRunning = running }
+            onLog = { msg -> bleLogs.add(msg) }
+            start(dive)
+        }
+    }
+
+    private fun stopBle() {
+        bleService?.stop()
+        bleRunning = false
     }
 
     private fun shareQrCode(payload: String) {
@@ -79,9 +146,7 @@ class MainActivity : ComponentActivity() {
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             startActivity(Intent.createChooser(intent, "Share QR Code"))
-        } catch (e: Exception) {
-            // Silently fail -- sharing is best-effort
-        }
+        } catch (_: Exception) {}
     }
 
     private fun generateQrBitmap(content: String, size: Int): Bitmap {

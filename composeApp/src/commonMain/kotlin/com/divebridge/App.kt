@@ -11,8 +11,6 @@ import com.divebridge.ssi.SsiPayloadBuilder
 import com.divebridge.ssi.toSsiDiveType
 import com.divebridge.ui.*
 import kotlinx.datetime.Clock
-import kotlinx.datetime.TimeZone
-import kotlinx.datetime.toLocalDateTime
 
 sealed class Screen {
     data object Home : Screen()
@@ -20,6 +18,7 @@ sealed class Screen {
     data object History : Screen()
     data class DiveReview(val dive: Dive) : Screen()
     data class QrCode(val payload: String, val dive: Dive?) : Screen()
+    data class BleEmulation(val dive: Dive) : Screen()
     data class Error(val message: String) : Screen()
 }
 
@@ -29,6 +28,7 @@ fun App(
     onPickFile: () -> Unit,
     onSetBrightness: (Float) -> Unit,
     onShareQr: (String) -> Unit,
+    bleContent: (@Composable (Dive, () -> Unit) -> Unit)? = null,
     fileBytes: ByteArray?,
 ) {
     var screen by remember { mutableStateOf<Screen>(Screen.Home) }
@@ -80,6 +80,7 @@ fun App(
                     dive = s.dive,
                     initialParams = paramsWithSport,
                     recentSiteIds = settings.getRecentSiteIds(),
+                    hasBle = bleContent != null && s.dive.profile != null,
                     onGenerate = { params ->
                         settings.saveLastDiveParams(params)
                         params.siteId?.let { settings.addRecentSiteId(it) }
@@ -96,6 +97,9 @@ fun App(
 
                         screen = Screen.QrCode(payload, s.dive)
                     },
+                    onBleTransfer = if (bleContent != null && s.dive.profile != null) {
+                        { screen = Screen.BleEmulation(s.dive) }
+                    } else null,
                     onBack = { screen = Screen.Home },
                 )
             }
@@ -108,6 +112,11 @@ fun App(
                     screen = if (dive != null) Screen.DiveReview(dive) else Screen.Home
                 },
             )
+            is Screen.BleEmulation -> {
+                bleContent?.invoke(s.dive) {
+                    screen = Screen.DiveReview(s.dive)
+                }
+            }
             is Screen.Error -> ErrorScreen(
                 message = s.message,
                 onBack = { screen = Screen.Home },
